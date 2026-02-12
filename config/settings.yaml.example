@@ -3,7 +3,7 @@
 
 agent:
   name: "NEXUS"
-  version: "0.2.0"
+  version: "0.3.0"
   game: "tibia"
   character_name: "YOUR_CHARACTER_NAME"
   log_level: "INFO"
@@ -129,6 +129,14 @@ skills:
   improvement_threshold: 80  # Score below this triggers improvement
   test_duration_minutes: 5   # Duration for skill testing
   max_iterations: 5          # Max improvement attempts per cycle
+
+# Reasoning Engine (local inference loop)
+reasoning:
+  cycle_seconds: 2.5  # How often the reasoning loop ticks
+
+# Metrics Loop
+metrics:
+  cycle_seconds: 60  # How often to log session metrics
 
 # Performance Tracking
 tracking:

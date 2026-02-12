@@ -29,6 +29,7 @@ import time
 import os
 import hashlib
 import structlog
+import aiofiles
 from datetime import datetime, date
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -408,8 +409,13 @@ class Consciousness:
             cause = self._extract_cause(content)
             self._close_call_causes[cause] += 1
 
-        # Append to daily episode log
-        self._append_to_daily_log(entry)
+        # Append to daily episode log (fire-and-forget async write)
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._append_to_daily_log(entry))
+        except RuntimeError:
+            pass  # No event loop running yet — skip daily log
 
     def recall(self, category: str = None, tags: list = None,
                min_importance: float = 0.0, limit: int = 20,
@@ -712,7 +718,7 @@ class Consciousness:
     #  PERSISTENCE
     # ═══════════════════════════════════════════════════════
 
-    def _append_to_daily_log(self, entry: Memory):
+    async def _append_to_daily_log(self, entry: Memory):
         today = date.today().isoformat()
         log_file = self.memory_dir / f"{today}.md"
         ts = datetime.fromtimestamp(entry.timestamp).strftime('%H:%M:%S')
@@ -721,20 +727,20 @@ class Consciousness:
         # Check before opening — avoids race condition with stat() inside open context
         needs_header = not log_file.exists() or log_file.stat().st_size == 0
 
-        with open(log_file, "a") as f:
+        async with aiofiles.open(log_file, "a") as f:
             if needs_header:
-                f.write(f"# NEXUS Session Log — {today}\n\n")
-            f.write(line)
+                await f.write(f"# NEXUS Session Log — {today}\n\n")
+            await f.write(line)
 
     async def _load_core_memory(self):
         memory_file = self.memory_dir / "MEMORY.md"
         if not memory_file.exists():
-            with open(memory_file, "w") as f:
-                f.write(NEXUS_IDENTITY)
-                f.write("\n\n---\n# Learned Strategies\n\n# Important Lessons\n\n")
+            async with aiofiles.open(memory_file, "w") as f:
+                await f.write(NEXUS_IDENTITY)
+                await f.write("\n\n---\n# Learned Strategies\n\n# Important Lessons\n\n")
             return
-        with open(memory_file) as f:
-            for line in f:
+        async with aiofiles.open(memory_file) as f:
+            async for line in f:
                 if line.startswith("- "):
                     self.core_memories.append(Memory(
                         timestamp=0, category="core", content=line[2:].strip(),
@@ -751,17 +757,18 @@ class Consciousness:
         if not new_core:
             return
         memory_file = self.memory_dir / "MEMORY.md"
-        with open(memory_file, "a") as f:
-            f.write(f"\n## Session {self.session_id}\n")
+        async with aiofiles.open(memory_file, "a") as f:
+            await f.write(f"\n## Session {self.session_id}\n")
             for mem in new_core:
-                f.write(f"- **[{mem.category}]** {mem.content}\n")
+                await f.write(f"- **[{mem.category}]** {mem.content}\n")
         self.core_memories.extend(new_core)
 
     async def _load_goals(self):
         path = self.data_dir / "goals.json"
         if path.exists():
-            with open(path) as f:
-                data = json.load(f)
+            async with aiofiles.open(path) as f:
+                raw = await f.read()
+                data = json.loads(raw)
             for g in data.get("active", []):
                 self.active_goals.append(Goal(**g))
             for g in data.get("completed", [])[-50:]:
@@ -773,14 +780,15 @@ class Consciousness:
             "active": [g.__dict__ for g in self.active_goals],
             "completed": [g.__dict__ for g in self.completed_goals[-50:]],
         }
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
+        async with aiofiles.open(path, "w") as f:
+            await f.write(json.dumps(data, indent=2))
 
     async def _load_mastery(self):
         path = self.data_dir / "mastery.json"
         if path.exists():
-            with open(path) as f:
-                for area, vals in json.load(f).items():
+            async with aiofiles.open(path) as f:
+                raw = await f.read()
+                for area, vals in json.loads(raw).items():
                     self.mastery[area] = MasteryArea(name=area, **vals)
 
     async def save_mastery(self):
@@ -790,8 +798,8 @@ class Consciousness:
             d = m.__dict__.copy()
             d.pop("name", None)
             data[area] = d
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
+        async with aiofiles.open(path, "w") as f:
+            await f.write(json.dumps(data, indent=2))
 
     async def _load_session_count(self):
         path = self.data_dir / "meta.json"

@@ -1,5 +1,8 @@
 """
-NEXUS Agent — Spatial Memory
+DEPRECATED — Use perception/spatial_memory_v2.py instead.
+This file is kept for backward compatibility and CI import checks only.
+
+NEXUS Agent — Spatial Memory (Legacy)
 
 A persistent, evolving world map built from exploration.
 This is what allows NEXUS to understand and navigate territory

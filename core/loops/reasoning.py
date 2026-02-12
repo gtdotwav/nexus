@@ -25,6 +25,8 @@ async def run(agent: NexusAgent) -> None:
     """Local real-time reasoning — zero API latency inference."""
     import asyncio
 
+    cycle_time = agent.config.get("reasoning", {}).get("cycle_seconds", 2.5)
+
     while agent.running:
         try:
             if (agent.state.is_alive
@@ -55,4 +57,4 @@ async def run(agent: NexusAgent) -> None:
         except Exception as e:
             log.error("reasoning.error", error=str(e))
 
-        await asyncio.sleep(2.5)
+        await asyncio.sleep(cycle_time)

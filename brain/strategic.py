@@ -146,6 +146,11 @@ class StrategicBrain:
         self._skipped_calls: int = 0
         self._last_meaningful_change: float = 0.0
 
+        # Retry / resilience config
+        self._max_retries: int = 3
+        self._base_delay: float = 1.0  # Exponential backoff: 1s → 2s → 4s
+        self._api_timeout: float = 15.0  # Hard timeout per API call
+
         # References (set by agent after init)
         self.consciousness = None
         self.spatial_memory = None       # SpatialMemory instance
@@ -160,11 +165,57 @@ class StrategicBrain:
             if not key:
                 log.error("strategic.no_api_key")
                 return False
-            self.client = AsyncAnthropic(api_key=key)
+            self.client = AsyncAnthropic(
+                api_key=key,
+                timeout=self._api_timeout,
+            )
             return True
         except ImportError:
             log.error("strategic.anthropic_not_installed")
             return False
+
+    async def _call_api_with_retry(self, **kwargs) -> Optional[object]:
+        """
+        Call Claude API with exponential backoff retry.
+
+        Retries on: timeout, connection error, rate limit (503/529).
+        Does NOT retry on: auth error (401), bad request (400).
+        Returns None after all retries exhausted.
+        """
+        last_error = None
+
+        for attempt in range(self._max_retries):
+            try:
+                return await self.client.messages.create(**kwargs)
+            except Exception as e:
+                last_error = e
+                error_type = type(e).__name__
+
+                # Classify: only retry transient/retryable errors
+                is_retryable = any(k in error_type.lower() for k in [
+                    "timeout", "connection", "ratelimit", "overloaded",
+                ]) or "529" in str(e) or "503" in str(e)
+
+                if not is_retryable:
+                    # Fatal error (auth, bad request, etc) — don't retry
+                    log.error("strategic.api_fatal",
+                              error=str(e)[:120], type=error_type,
+                              attempt=attempt + 1)
+                    return None
+
+                # Exponential backoff: 1s, 2s, 4s
+                delay = self._base_delay * (2 ** attempt)
+                log.warning("strategic.api_retry",
+                            error=str(e)[:80], type=error_type,
+                            attempt=attempt + 1, max_retries=self._max_retries,
+                            next_delay_s=delay)
+                await asyncio.sleep(delay)
+
+        # All retries exhausted
+        log.error("strategic.api_exhausted",
+                  error=str(last_error)[:100] if last_error else "unknown",
+                  retries=self._max_retries)
+        return None
 
     async def think(self, snapshot: dict) -> Optional[dict]:
         """
@@ -216,7 +267,7 @@ class StrategicBrain:
         start = time.perf_counter()
 
         try:
-            response = await self.client.messages.create(
+            response = await self._call_api_with_retry(
                 model=self.config["model_strategic"],
                 max_tokens=self.config.get("max_tokens", 1024),
                 temperature=self.config.get("temperature", 0.2),
@@ -226,6 +277,13 @@ class StrategicBrain:
                     {"role": "user", "content": context},
                 ],
             )
+
+            if response is None:
+                # All retries failed — maintain current state
+                self._errors += 1
+                log.warning("strategic.api_unavailable",
+                            latency_ms=round((time.perf_counter() - start) * 1000))
+                return None
 
             text = response.content[0].text
             parsed = self._parse_json(text)
@@ -256,7 +314,9 @@ class StrategicBrain:
 
         except Exception as e:
             self._errors += 1
-            log.error("strategic.error", error=str(e), latency_ms=round((time.perf_counter() - start) * 1000))
+            log.error("strategic.unexpected_error",
+                      error=str(e), type=type(e).__name__,
+                      latency_ms=round((time.perf_counter() - start) * 1000))
             return None
 
     def _build_context(self, snapshot: dict) -> str:
@@ -377,17 +437,16 @@ class StrategicBrain:
 
         prompt = context.get("prompt", json.dumps(context, indent=2))
 
-        try:
-            response = await self.client.messages.create(
-                model=self.config.get("model_skill_creation", self.config["model_strategic"]),
-                max_tokens=2048,
-                temperature=0.2,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return {"yaml_content": response.content[0].text}
-        except Exception as e:
-            log.error("strategic.skill_creation_error", error=str(e))
+        response = await self._call_api_with_retry(
+            model=self.config.get("model_skill_creation", self.config["model_strategic"]),
+            max_tokens=2048,
+            temperature=0.2,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if response is None:
+            log.error("strategic.skill_creation_failed")
             return None
+        return {"yaml_content": response.content[0].text}
 
     async def analyze_skill_performance(self, skill_name: str, metrics: dict) -> Optional[dict]:
         """Analyze skill performance and suggest improvements."""
@@ -400,17 +459,16 @@ class StrategicBrain:
 Return JSON with:
 {{"score": 0-100, "issues": [...], "improvements": {{"healing": {{}}, "targeting": {{}}}}, "expected_impact": 0-100}}"""
 
-        try:
-            response = await self.client.messages.create(
-                model=self.config.get("model_skill_creation", self.config["model_strategic"]),
-                max_tokens=1024,
-                temperature=0.2,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return self._parse_json(response.content[0].text)
-        except Exception as e:
-            log.error("strategic.analysis_error", error=str(e))
+        response = await self._call_api_with_retry(
+            model=self.config.get("model_skill_creation", self.config["model_strategic"]),
+            max_tokens=1024,
+            temperature=0.2,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if response is None:
+            log.error("strategic.analysis_failed")
             return None
+        return self._parse_json(response.content[0].text)
 
     @property
     def avg_latency_ms(self) -> float:

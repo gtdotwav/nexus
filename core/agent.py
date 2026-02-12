@@ -201,9 +201,9 @@ class NexusAgent:
             "goals": len(self.consciousness.active_goals),
         }, source="agent")
 
-        # Register all loops from the loops package
+        # Register all loops with crash monitoring
         self._tasks = [
-            asyncio.create_task(loop_fn(self), name=name)
+            asyncio.create_task(self._monitored_loop(name, loop_fn), name=name)
             for name, loop_fn in ALL_LOOPS
         ]
 
@@ -270,6 +270,48 @@ class NexusAgent:
             reasoning=self.reasoning_engine.stats,
             explorer=self.explorer.stats,
         )
+
+    async def _monitored_loop(self, name: str, loop_fn) -> None:
+        """
+        Wrapper that monitors a loop for crashes.
+        If a loop dies unexpectedly, logs the error, emits an event,
+        and restarts it after a cooldown (max 3 restarts per loop).
+        """
+        max_restarts = 3
+        restarts = 0
+
+        while self.running and restarts <= max_restarts:
+            try:
+                await loop_fn(self)
+                # Loop exited cleanly (agent stopping)
+                return
+            except asyncio.CancelledError:
+                # Normal shutdown — propagate
+                return
+            except Exception as e:
+                restarts += 1
+                log.error("nexus.loop_crashed",
+                          loop=name, error=str(e),
+                          type=type(e).__name__,
+                          restart=restarts, max_restarts=max_restarts)
+
+                await self.event_bus.emit(EventType.STATE_UPDATED, {
+                    "component": "loop_crash",
+                    "loop": name,
+                    "error": str(e)[:200],
+                    "restart_count": restarts,
+                }, source="agent")
+
+                if restarts > max_restarts:
+                    log.critical("nexus.loop_permanently_dead",
+                                 loop=name, restarts=restarts)
+                    return
+
+                # Cooldown before restart (exponential: 2s, 4s, 8s)
+                cooldown = 2.0 * (2 ** (restarts - 1))
+                log.warning("nexus.loop_restarting",
+                            loop=name, cooldown_s=cooldown)
+                await asyncio.sleep(cooldown)
 
     def _activate_skill(self, skill):
         """Activate a skill and configure all subsystems from it."""

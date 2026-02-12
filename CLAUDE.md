@@ -162,12 +162,43 @@ chore: manutenção
 
 ## Versão Atual
 
-**v0.2.0** — Refatoração para colaboração multi-dev
+**v0.3.0** — Resilience & Robustness
 
-## Últimas Mudanças
+## Últimas Mudanças (v0.3.0)
+
+- `core/event_bus.py` — Fix: errors in global handlers were silently swallowed. Now properly logged
+- `core/consciousness.py` — Fix: 7 points of sync file I/O blocking the event loop. Now uses aiofiles
+- `brain/strategic.py` — Fix: API calls without timeout/retry. Now has 15s timeout + 3x exponential backoff
+- `core/agent.py` — Fix: loop crashes were silent. Now monitored with auto-restart (max 3x per loop)
+- `core/loops/strategic.py` — Fix: single bad API decision could crash all decision application. Now individually wrapped
+- `core/loops/__init__.py` — New: warns at startup if .py loop files exist but aren't registered in ALL_LOOPS
+- `core/loops/reasoning.py`, `metrics.py` — Intervals now configurable via settings.yaml
+- `core/loops/TEMPLATE.py` — Moved to `docs/LOOP_TEMPLATE.py` (was polluting production code)
+- Legacy files `perception/game_reader.py` and `perception/spatial_memory.py` marked DEPRECATED
+- CI: added ruff + mypy (warning-only)
+- `aiofiles` added to dependencies
+
+## Mudanças Anteriores (v0.2.0)
 
 - `core/state/` — Splitado em package (enums.py, models.py, game_state.py)
 - `core/loops/` — Loops extraídos de agent.py para arquivos individuais
 - `CLAUDE.md` — Contexto compartilhado entre 3 Claudes
 - GitHub Actions CI — Syntax + imports + secrets check
 - Git hooks — Pre-push e pre-commit protections
+
+## Known Issues & Limitations
+
+### O que NÃO funciona ainda
+- **Config validation**: Não existe validação do settings.yaml. Se faltam campos, crash sem mensagem clara
+- **Testes**: Zero testes unitários/integração. Qualquer refatoração é "reza e push"
+- **Dashboard**: Parcialmente implementado. Precisa de investigação do estado real
+- **Humanização do mouse**: Usa noise gaussiano simples. Falta curvas Bézier para movimentos mais humanos
+- **Creature database**: Tiers de criaturas inferidos pelo reasoning engine, não existe DB estático
+- **Skill YAML schema**: Skills não são validadas antes de carregar. YAML inválido = crash
+- **Anti-detection**: Nível básico. Análise comportamental mais avançada não implementada
+
+### Pontos de atenção para devs
+- `perception/game_reader.py` e `spatial_memory.py` são LEGACY. Use as versões v2
+- Os loops têm auto-restart (max 3x). Se um loop morre 3 vezes, ele fica morto até restart do agent
+- Strategic brain retorna `None` (manter estado) em caso de falha total da API — o agente não para
+- EventBus `_dispatch_event()` é chamado via `call_soon_threadsafe` — handlers DEVEM ser thread-safe

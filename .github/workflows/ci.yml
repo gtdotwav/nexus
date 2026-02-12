@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyyaml structlog anthropic pynput aiohttp click rich numpy opencv-python-headless Pillow aiohttp-cors
+          pip install pyyaml structlog anthropic pynput aiohttp click rich numpy opencv-python-headless Pillow aiohttp-cors aiofiles ruff mypy
 
       - name: Check syntax (all .py files)
         run: |
@@ -129,6 +129,18 @@ jobs:
             exit 1
           fi
           echo "No secrets detected"
+
+      - name: Lint with ruff (warning-only)
+        continue-on-error: true
+        run: |
+          echo "=== Running ruff ==="
+          ruff check . --target-version py311 --select E,F,W --statistics || true
+
+      - name: Type check with mypy (warning-only)
+        continue-on-error: true
+        run: |
+          echo "=== Running mypy ==="
+          mypy core/ brain/ --ignore-missing-imports --no-error-summary 2>&1 | head -50 || true
 
       - name: Summary
         if: always()

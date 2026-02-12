@@ -145,28 +145,7 @@ class EventBus:
         event = Event(type=event_type, data=data or {}, source=source)
         self._history[event_type].append(event)
         self._event_count += 1
-
-        # Execute type-specific handlers
-        for _, handler in self._handlers.get(event_type, []):
-            try:
-                if asyncio.iscoroutinefunction(handler):
-                    await handler(event)
-                else:
-                    handler(event)
-            except Exception as e:
-                log.error("event_bus.handler_error",
-                          event=event_type.name, error=str(e))
-
-        # Execute global handlers
-        for handler in self._global_handlers:
-            try:
-                if asyncio.iscoroutinefunction(handler):
-                    await handler(event)
-                else:
-                    handler(event)
-            except Exception:
-                pass
-
+        await self._execute_handlers(event)
         return event
 
     def emit_threadsafe(self, event_type: EventType, data: dict = None,
@@ -182,11 +161,15 @@ class EventBus:
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(
                 asyncio.ensure_future,
-                self._dispatch_event(event),
+                self._execute_handlers(event),
             )
 
-    async def _dispatch_event(self, event: Event):
-        """Internal: dispatch a pre-created event."""
+    async def _execute_handlers(self, event: Event):
+        """
+        Internal: execute all handlers for an event.
+        Shared by emit() and emit_threadsafe() — single source of truth.
+        """
+        # Execute type-specific handlers
         for _, handler in self._handlers.get(event.type, []):
             try:
                 if asyncio.iscoroutinefunction(handler):
@@ -194,17 +177,21 @@ class EventBus:
                 else:
                     handler(event)
             except Exception as e:
-                log.error("event_bus.dispatch_error",
-                          event=event.type.name, error=str(e))
+                log.error("event_bus.handler_error",
+                          event=event.type.name, error=str(e),
+                          handler=getattr(handler, "__name__", str(handler)))
 
+        # Execute global handlers (dashboard, logging, etc.)
         for handler in self._global_handlers:
             try:
                 if asyncio.iscoroutinefunction(handler):
                     await handler(event)
                 else:
                     handler(event)
-            except Exception:
-                pass
+            except Exception as e:
+                log.error("event_bus.global_handler_error",
+                          event=event.type.name, error=str(e),
+                          handler=getattr(handler, "__name__", str(handler)))
 
     def set_loop(self, loop: asyncio.AbstractEventLoop):
         """Set the event loop for thread-safe emission."""

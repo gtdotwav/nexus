@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "NEXUS — Autonomous Gaming Agent with Dual-Brain AI Architecture"
 readme = "README.md"
 license = {text = "MIT"}
@@ -33,6 +33,7 @@ dependencies = [
     "pyyaml>=6.0",
     "structlog>=24.0.0",
     "rich>=13.0.0",
+    "aiofiles>=24.0.0",
     "aiohttp>=3.9.0",
     "aiohttp-cors>=0.7.0",
     "click>=8.1.0",

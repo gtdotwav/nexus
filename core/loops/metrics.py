@@ -20,6 +20,8 @@ async def run(agent: NexusAgent) -> None:
     """Session metrics tracking and logging."""
     import asyncio
 
+    cycle_time = agent.config.get("metrics", {}).get("cycle_seconds", 60)
+
     while agent.running:
         try:
             elapsed_hours = agent.state.session_duration_minutes / 60
@@ -49,4 +51,4 @@ async def run(agent: NexusAgent) -> None:
         except Exception as e:
             log.error("metrics.error", error=str(e))
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(cycle_time)

@@ -7,6 +7,32 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ---
 
 
+## [0.3.0] - 2026-02-12
+
+### Fixed
+
+- **EventBus silent error swallowing**: `except Exception: pass` in global handler dispatch replaced with proper `log.error()`. Extracted shared `_execute_handlers()` to eliminate duplicated handler logic
+- **Consciousness blocking I/O**: 7 points of synchronous `open()` calls inside `async def` methods converted to `aiofiles`. Prevents event loop blocking during file writes (goals, mastery, memory log)
+- **Strategic brain no retry/timeout**: API calls now have 15s timeout, exponential backoff retry (1s→2s→4s, max 3 attempts), and graceful fallback to `None` (maintain state) on total failure
+- **Silent loop crashes**: `asyncio.create_task()` without error handling replaced by `_monitored_loop()` wrapper — logs crashes, emits events, auto-restarts with cooldown (max 3 restarts per loop)
+- **Decision application cascade failure**: Single bad API decision (e.g., invalid mode name) no longer crashes entire `apply_decisions()`. Each decision block is individually wrapped with try/except
+
+### Added
+
+- **Loop auto-discovery check**: `core/loops/__init__.py` warns at startup if `.py` files exist in the loops directory but aren't registered in `ALL_LOOPS`
+- **Configurable loop intervals**: `reasoning.cycle_seconds` and `metrics.cycle_seconds` now read from settings.yaml with sensible defaults
+- **Loop TEMPLATE**: Moved from `core/loops/TEMPLATE.py` to `docs/LOOP_TEMPLATE.py` to avoid polluting production code
+- **CI improvements**: Added `ruff` linting and `mypy` type checking as warning-only steps
+- **CLAUDE.md Known Issues**: New section documenting what doesn't work yet, so all 3 Claude instances know the limitations
+
+### Changed
+
+- **Legacy deprecation**: `perception/game_reader.py` and `perception/spatial_memory.py` now have DEPRECATED notice as first line of docstring
+- **requirements.txt**: Aligned with pyproject.toml — added aiofiles, fixed dashboard deps (aiohttp instead of fastapi/uvicorn)
+- **pyproject.toml**: Added `aiofiles>=24.0.0` to core dependencies, version bump to 0.3.0
+
+---
+
 ## [0.2.0] - 2026-02-12
 
 ### Added

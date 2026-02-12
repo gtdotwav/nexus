@@ -1,5 +1,8 @@
 """
-NEXUS Agent - Game State Reader
+DEPRECATED — Use perception/game_reader_v2.py instead.
+This file is kept for backward compatibility and CI import checks only.
+
+NEXUS Agent - Game State Reader (Legacy)
 
 Extracts structured game data from screen captures.
 Converts raw pixels into HP, Mana, creatures, position, etc.
