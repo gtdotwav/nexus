@@ -77,6 +77,7 @@ class DeathRecovery:
         self.total_recoveries: int = 0
         self.total_recovery_time: float = 0
         self.consecutive_deaths: int = 0
+        self._last_recovery_end: float = 0.0
         self._last_recovery_end: float = 0
 
     def load_config(self, recovery_config: dict = None):

@@ -162,9 +162,23 @@ chore: manutenção
 
 ## Versão Atual
 
-**v0.3.0** — Resilience & Robustness
+**v0.3.1** — Deep Analysis Bugfix
 
-## Últimas Mudanças (v0.3.0)
+## Últimas Mudanças (v0.3.1)
+
+- `core/consciousness.py` — Fix: 3 MAIS pontos de sync I/O que tinham escapado (session count + reflect)
+- `core/event_bus.py` — Fix: `emit_threadsafe()` usava `ensure_future` errado → `run_coroutine_threadsafe()`
+- `brain/reasoning.py` — Fix: crash ao acessar `floors[z]` sem verificar existência + null check em `get_reasoning_context()`
+- `brain/strategic.py` — Fix: crash se API retorna response.content vazio
+- `core/foundry.py` — Fix: 2 pontos de sync I/O em async (initialize + save_history)
+- `core/recovery.py` — Fix: `_last_recovery_end` não inicializado (AttributeError na primeira morte)
+- `core/state/game_state.py` — Fix: `_notify()` agora copia lista antes de iterar (thread safety)
+- `core/loops/metrics.py` — Fix: crash se `navigator.active_route` é None
+- `main.py` — Consolidado: era 174 linhas duplicando nexus_cli.py. Agora redirect fino
+- `pyproject.toml` — Adicionado pydantic + sqlite-utils que faltavam nas deps core
+- Versões alinhadas: main.py, nexus_cli.py, settings.yaml agora todos 0.3.1
+
+## Mudanças Anteriores (v0.3.0)
 
 - `core/event_bus.py` — Fix: errors in global handlers were silently swallowed. Now properly logged
 - `core/consciousness.py` — Fix: 7 points of sync file I/O blocking the event loop. Now uses aiofiles

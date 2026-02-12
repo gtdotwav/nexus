@@ -250,11 +250,14 @@ class ReasoningEngine:
                 name_bonus += 1
 
         # Signal 4: Death data
-        area_deaths = sum(
-            self.memory.floors[pos.z].get(pos.x + dx, pos.y + dy).death_count
-            for dx in range(-5, 6) for dy in range(-5, 6)
-            if pos.z in self.memory.floors
-        )
+        area_deaths = 0
+        if pos.z in self.memory.floors:
+            floor_data = self.memory.floors[pos.z]
+            for dx in range(-5, 6):
+                for dy in range(-5, 6):
+                    cell = floor_data.get((pos.x + dx, pos.y + dy))
+                    if cell and hasattr(cell, "death_count"):
+                        area_deaths += cell.death_count
         death_bonus = min(2, area_deaths * 0.3)
 
         # Combine signals
@@ -442,6 +445,9 @@ class ReasoningEngine:
         Build compact context string for the strategic brain.
         Feeds local reasoning results into Claude's thinking.
         """
+        if self.current_profile is None:
+            return "[LOCAL REASONING]\nNo analysis yet"
+
         p = self.current_profile
         lines = [
             f"[LOCAL REASONING]",

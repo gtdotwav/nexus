@@ -37,7 +37,7 @@ async def run(agent: NexusAgent) -> None:
                 kills=agent.state.session.kills,
                 mode=agent.state.mode.name,
                 threat=agent.state.threat_level.name,
-                nav=f"WP{agent.navigator.current_index}/{len(agent.navigator.active_route)}",
+                nav=f"WP{agent.navigator.current_index}/{len(agent.navigator.active_route or [])}",
                 loot=agent.loot_engine.items_looted,
                 depot_runs=agent.supply_manager.depot_runs,
                 map_cells=agent.spatial_memory.total_cells_explored,

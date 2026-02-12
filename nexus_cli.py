@@ -39,7 +39,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 console = Console()
 
-VERSION = "0.1.0"
+VERSION = "0.3.1"
 NEXUS_HOME = Path.home() / ".nexus"
 PID_FILE = NEXUS_HOME / "nexus.pid"
 CONFIG_FILE = NEXUS_HOME / "config.yaml"

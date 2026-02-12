@@ -7,6 +7,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ---
 
 
+## [0.3.1] - 2026-02-12
+
+### Fixed
+
+- **consciousness.py: 3 more sync I/O points**: `_load_session_count()`, `_save_session_count()`, and `reflect_and_save()` were still blocking the event loop. All converted to aiofiles
+- **event_bus.py: threadsafe emission broken**: `call_soon_threadsafe(asyncio.ensure_future, ...)` was wrong — `ensure_future` can't be called that way from a non-async context. Fixed to `asyncio.run_coroutine_threadsafe()`
+- **brain/reasoning.py: boundary crash in creature tier**: `self.memory.floors[pos.z]` accessed before checking if `pos.z` exists. Rewritten with proper guard
+- **brain/strategic.py: empty response crash**: `response.content[0].text` would IndexError if API returned empty content. Added null check
+- **core/foundry.py: sync I/O in async**: `initialize()` and `_save_history()` used blocking `open()`. Migrated to aiofiles
+- **core/recovery.py: uninitialized field**: `_last_recovery_end` was used in `start_recovery()` but never initialized, causing AttributeError on first death
+- **core/state/game_state.py: listener iteration safety**: `_notify()` now copies callback list before iterating, preventing issues if listeners modify the list during dispatch
+- **core/loops/metrics.py: null route crash**: `len(agent.navigator.active_route)` crashed if route was None. Added `or []` guard
+- **brain/reasoning.py: null profile crash**: `get_reasoning_context()` would fail if `analyze()` never ran. Added None check
+
+### Changed
+
+- **Version alignment**: Fixed version inconsistency across 5 files — main.py (was 0.1.0), nexus_cli.py (was 0.1.0), config/settings.yaml (was 0.2.0) now all 0.3.1
+- **main.py consolidated**: Was 174 lines duplicating nexus_cli.py logic with argparse. Now a thin redirect to the Click-based CLI
+- **pyproject.toml deps complete**: Added missing `pydantic>=2.5.0` and `sqlite-utils>=3.36` to core deps. Fixed `[all]` extra to include `windows`
+- **loops/__init__.py auto-discovery**: Wrapped in try/except for OSError/PermissionError safety
+
+---
+
 ## [0.3.0] - 2026-02-12
 
 ### Fixed

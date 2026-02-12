@@ -23,6 +23,7 @@ import asyncio
 import json
 import time
 import yaml
+import aiofiles
 import structlog
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -116,8 +117,9 @@ class Foundry:
         """Load evolution history."""
         history_file = self.evolution_dir / "history.json"
         if history_file.exists():
-            with open(history_file) as f:
-                data = json.load(f)
+            async with aiofiles.open(history_file) as f:
+                raw = await f.read()
+                data = json.loads(raw)
                 self.total_evolutions = data.get("total", 0)
                 self.successful_evolutions = data.get("successful", 0)
                 self.total_experiments = data.get("experiments", 0)
@@ -652,5 +654,5 @@ Then create a complete Tibia skill YAML definition."""
                 for r in self.history[-100:]
             ],
         }
-        with open(history_file, "w") as f:
-            json.dump(data, f, indent=2)
+        async with aiofiles.open(history_file, "w") as f:
+            await f.write(json.dumps(data, indent=2))

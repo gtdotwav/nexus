@@ -285,6 +285,12 @@ class StrategicBrain:
                             latency_ms=round((time.perf_counter() - start) * 1000))
                 return None
 
+            if not response.content:
+                self._errors += 1
+                log.warning("strategic.empty_response",
+                            latency_ms=round((time.perf_counter() - start) * 1000))
+                return None
+
             text = response.content[0].text
             parsed = self._parse_json(text)
 

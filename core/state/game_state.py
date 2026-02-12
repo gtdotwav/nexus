@@ -235,8 +235,11 @@ class GameState:
         self._listeners[event].append(callback)
 
     def _notify(self, event: str, data: dict = None):
-        for callback in self._listeners.get(event, []):
+        # Copy to avoid issues if listeners modify the list during iteration
+        callbacks = self._listeners.get(event, [])[:]
+        for callback in callbacks:
             try:
                 callback(data or {})
             except Exception as e:
-                log.error("state.listener_error", event=event, error=str(e))
+                log.error("state.listener_error", event=event, error=str(e),
+                          handler=getattr(callback, "__name__", str(callback)))

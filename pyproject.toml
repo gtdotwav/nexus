@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-agent"
-version = "0.3.0"
+version = "0.3.1"
 description = "NEXUS — Autonomous Gaming Agent with Dual-Brain AI Architecture"
 readme = "README.md"
 license = {text = "MIT"}
@@ -37,6 +37,8 @@ dependencies = [
     "aiohttp>=3.9.0",
     "aiohttp-cors>=0.7.0",
     "click>=8.1.0",
+    "pydantic>=2.5.0",
+    "sqlite-utils>=3.36",
 ]
 
 [project.optional-dependencies]
@@ -50,7 +52,7 @@ fast = [
     "uvloop>=0.19.0;platform_system!='Windows'",
 ]
 all = [
-    "nexus-agent[ocr,fast]",
+    "nexus-agent[windows,ocr,fast]",
 ]
 dev = [
     "pytest>=8.0",

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/NEXUS-v0.3.0-blueviolet?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgNy4zMTJsMTAgNi4xNTYgMTAtNi4xNTZMMTIgMnptMCAxMy41NjRMMy4zMTIgOS44NzUgMiAxMC42ODhsMTAgNi4xNTYgMTAtNi4xNTZMMS42ODggOS44NzUgMTIgMTUuNTY0em0wIDUuMDYyTDMuMzEyIDE0LjkzOCAyIDE1Ljc1bDEwIDYuMTU2IDEwLTYuMTU2LTEuMzEyLS44MTJMMTIgMjAuNjI2eiIvPjwvc3ZnPg==" alt="NEXUS">
+  <img src="https://img.shields.io/badge/NEXUS-v0.3.1-blueviolet?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgNy4zMTJsMTAgNi4xNTYgMTAtNi4xNTZMMTIgMnptMCAxMy41NjRMMy4zMTIgOS44NzUgMiAxMC42ODhsMTAgNi4xNTYgMTAtNi4xNTZMMS42ODggOS44NzUgMTIgMTUuNTY0em0wIDUuMDYyTDMuMzEyIDE0LjkzOCAyIDE1Ljc1bDEwIDYuMTU2IDEwLTYuMTU2LTEuMzEyLS44MTJMMTIgMjAuNjI2eiIvPjwvc3ZnPg==" alt="NEXUS">
   <br>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/AI-Claude%20API-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude">

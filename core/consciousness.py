@@ -804,13 +804,14 @@ class Consciousness:
     async def _load_session_count(self):
         path = self.data_dir / "meta.json"
         if path.exists():
-            with open(path) as f:
-                self.total_sessions_ever = json.load(f).get("total_sessions", 0)
+            async with aiofiles.open(path) as f:
+                content = await f.read()
+                self.total_sessions_ever = json.loads(content).get("total_sessions", 0)
 
     async def _save_session_count(self):
         path = self.data_dir / "meta.json"
-        with open(path, "w") as f:
-            json.dump({"total_sessions": self.total_sessions_ever}, f)
+        async with aiofiles.open(path, "w") as f:
+            await f.write(json.dumps({"total_sessions": self.total_sessions_ever}))
 
     async def _quick_save(self):
         """Fast periodic save of critical state."""
@@ -843,11 +844,11 @@ class Consciousness:
         # Save daily reflection
         today = date.today().isoformat()
         log_file = self.memory_dir / f"{today}.md"
-        with open(log_file, "a") as f:
-            f.write(f"\n---\n## Reflection — Session {self.session_id}\n")
-            f.write(f"Duration: {session_min:.0f}min | Emotion: {json.dumps(self.emotion)}\n")
+        async with aiofiles.open(log_file, "a") as f:
+            await f.write(f"\n---\n## Reflection — Session {self.session_id}\n")
+            await f.write(f"Duration: {session_min:.0f}min | Emotion: {json.dumps(self.emotion)}\n")
             for lesson in lessons:
-                f.write(f"- {lesson}\n")
+                await f.write(f"- {lesson}\n")
 
         # Persist everything
         await self.save_core_memory()

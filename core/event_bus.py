@@ -159,9 +159,9 @@ class EventBus:
         self._event_count += 1
 
         if self._loop and self._loop.is_running():
-            self._loop.call_soon_threadsafe(
-                asyncio.ensure_future,
+            asyncio.run_coroutine_threadsafe(
                 self._execute_handlers(event),
+                self._loop,
             )
 
     async def _execute_handlers(self, event: Event):

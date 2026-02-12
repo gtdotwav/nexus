@@ -48,14 +48,17 @@ _registered_modules = {
     "consciousness", "evolution", "recovery", "reasoning", "metrics",
 }
 
-_loops_dir = os.path.dirname(os.path.abspath(__file__))
-for _fname in os.listdir(_loops_dir):
-    if _fname.endswith(".py") and _fname not in _IGNORE_FILES:
-        _mod_name = _fname[:-3]  # strip .py
-        if _mod_name not in _registered_modules:
-            log.warning("loops.unregistered_file",
-                        file=_fname,
-                        hint=f"Add '{_mod_name}' to ALL_LOOPS in core/loops/__init__.py")
+try:
+    _loops_dir = os.path.dirname(os.path.abspath(__file__))
+    for _fname in os.listdir(_loops_dir):
+        if _fname.endswith(".py") and _fname not in _IGNORE_FILES:
+            _mod_name = _fname[:-3]  # strip .py
+            if _mod_name not in _registered_modules:
+                log.warning("loops.unregistered_file",
+                            file=_fname,
+                            hint=f"Add '{_mod_name}' to ALL_LOOPS in core/loops/__init__.py")
+except (OSError, PermissionError) as e:
+    log.warning("loops.discovery_failed", error=str(e))
 
 __all__ = [
     "ALL_LOOPS",
