@@ -53,6 +53,7 @@ jobs:
               'core.state.enums',
               'core.state.models',
               'core.state.game_state',
+              'core.config',
               'core.event_bus',
               'core.consciousness',
               'core.foundry',
@@ -126,6 +127,11 @@ jobs:
             exit 1
           fi
           echo "No secrets detected"
+
+      - name: Run tests
+        run: |
+          echo "=== Running pytest ==="
+          pytest tests/ -v --tb=short
 
       - name: Lint with ruff (warning-only)
         continue-on-error: true

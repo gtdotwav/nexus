@@ -166,14 +166,26 @@ class EventBus:
 
     async def _execute_handlers(self, event: Event):
         """
-        Internal: execute all handlers for an event.
+        Internal: execute all handlers for an event in PARALLEL.
         Shared by emit() and emit_threadsafe() — single source of truth.
+
+        v0.4.1: Async handlers now run concurrently via asyncio.gather
+        so one slow handler (e.g. dashboard broadcast) doesn't block others
+        (e.g. healing reaction). Sync handlers still run inline (must be fast).
         """
-        # Execute type-specific handlers
-        for _, handler in self._handlers.get(event.type, []):
+        async_tasks: list = []
+
+        # Collect all handlers: type-specific (priority-sorted) + global
+        all_handlers: list[Handler] = [
+            h for _, h in self._handlers.get(event.type, [])
+        ] + list(self._global_handlers)
+
+        for handler in all_handlers:
             try:
                 if asyncio.iscoroutinefunction(handler):
-                    await handler(event)
+                    async_tasks.append(
+                        asyncio.create_task(self._safe_call_async(handler, event))
+                    )
                 else:
                     handler(event)
             except Exception as e:
@@ -181,17 +193,18 @@ class EventBus:
                           event=event.type.name, error=str(e),
                           handler=getattr(handler, "__name__", str(handler)))
 
-        # Execute global handlers (dashboard, logging, etc.)
-        for handler in self._global_handlers:
-            try:
-                if asyncio.iscoroutinefunction(handler):
-                    await handler(event)
-                else:
-                    handler(event)
-            except Exception as e:
-                log.error("event_bus.global_handler_error",
-                          event=event.type.name, error=str(e),
-                          handler=getattr(handler, "__name__", str(handler)))
+        # Await all async handlers concurrently
+        if async_tasks:
+            await asyncio.gather(*async_tasks, return_exceptions=True)
+
+    async def _safe_call_async(self, handler: Handler, event: Event):
+        """Wrap an async handler call with error logging."""
+        try:
+            await handler(event)
+        except Exception as e:
+            log.error("event_bus.async_handler_error",
+                      event=event.type.name, error=str(e),
+                      handler=getattr(handler, "__name__", str(handler)))
 
     def set_loop(self, loop: asyncio.AbstractEventLoop):
         """Set the event loop for thread-safe emission."""

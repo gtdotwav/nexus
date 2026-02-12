@@ -27,6 +27,7 @@ core/
 │   ├── enums.py              # AgentMode, ThreatLevel
 │   ├── models.py             # Position, CreatureState, SupplyCount, etc.
 │   └── game_state.py         # GameState class
+├── config.py                 # Pydantic config validation (NexusConfig)
 ├── agent.py                  # Orquestrador fino — registra loops, não implementa
 ├── loops/                    # ← Cada loop em arquivo separado
 │   ├── __init__.py
@@ -167,9 +168,26 @@ chore: manutenção
 
 ## Versão Atual
 
-**v0.4.0** — Stack Audit + Purge
+**v0.4.1** — Circuit Breaker + Tests + Config Validation
 
-## Últimas Mudanças (v0.4.0)
+## Últimas Mudanças (v0.4.1)
+
+### Novas Features
+- **Circuit breaker** em `brain/strategic.py`: 3-state (CLOSED/OPEN/HALF_OPEN). Após 5 falhas em 60s, para de chamar API e retorna None instantaneamente. Probe a cada 30s
+- **Test suite**: 46 testes em `tests/` — EventBus, GameState, StrategicBrain (circuit breaker, cache, state-diff, JSON parse), Config validation. CI roda `pytest` automaticamente
+- **Config validation**: `core/config.py` com Pydantic. `NexusConfig` valida settings.yaml no startup. Typos crasham imediato com mensagem clara
+- **EventBus parallel handlers**: Async handlers agora rodam via `asyncio.gather` em paralelo. Handler lento não bloqueia healing
+
+### Fixes
+- `games/tibia/adapter.py` — Import de `game_reader.py` (deletado!) → `game_reader_v2.py`
+- `core/consciousness.py` — Fingerprints: set (sem ordem) → deque(maxlen=500) (FIFO, auto-evict)
+- `brain/strategic.py` — Conversation history memory leak → explicit trim
+- `brain/strategic.py` — `c['name']` → `c.get('name', '?')` para creature dicts malformados
+- `actions/explorer.py` — Diagonal move sem asyncio.Lock → com lock
+- `brain/reasoning.py` — Unused Counter import removido
+- TYPE_CHECKING imports atualizados para spatial_memory_v2
+
+## Mudanças Anteriores (v0.4.0)
 
 ### Remoções (stack cleanup)
 - `perception/game_reader.py` — REMOVIDO (legacy v1, ninguém usa)
@@ -212,18 +230,20 @@ chore: manutenção
 ## Known Issues & Limitations
 
 ### O que NÃO funciona ainda
-- **Config validation**: Não existe validação do settings.yaml (pydantic schema pendente)
-- **Testes**: Zero testes unitários/integração
 - **Dashboard**: Parcialmente implementado
 - **Humanização do mouse**: Falta curvas Bézier
 - **Creature database**: Tiers inferidos pelo reasoning engine, não existe DB estático
 - **Skill YAML schema**: Skills não são validadas antes de carregar
 - **Consciousness god object**: 800+ linhas, deveria ser quebrado em MemoryStore/EmotionTracker/GoalManager
-- **EventBus handlers sequenciais**: Um handler lento bloqueia todos os outros
 - **Foundry experiment threshold**: Score ≥ 2 de max 7 é muito baixo (28%)
 - **Navigator hunt patrol**: Random walk puro, deveria usar spatial memory
 - **Looting**: `modifiers=["shift"]` no click() não implementado
-- **No circuit breaker**: Se Claude API cai, strategic brain retenta forever
+
+### Resolvido em v0.4.1
+- ~~Config validation~~ → `core/config.py` com Pydantic
+- ~~Zero testes~~ → 46 testes em `tests/`
+- ~~EventBus handlers sequenciais~~ → Parallel via `asyncio.gather`
+- ~~No circuit breaker~~ → 3-state circuit breaker no StrategicBrain
 
 ### Pontos de atenção para devs
 - Os loops têm auto-restart (max 3x). Se um loop morre 3 vezes, ele fica morto até restart do agent

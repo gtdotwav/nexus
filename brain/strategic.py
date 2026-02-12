@@ -17,6 +17,7 @@ Uses Claude API with structured output for deterministic execution.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 import os
@@ -151,6 +152,14 @@ class StrategicBrain:
         self._base_delay: float = 1.0  # Exponential backoff: 1s → 2s → 4s
         self._api_timeout: float = 15.0  # Hard timeout per API call
 
+        # Circuit breaker: stop hammering API when it's down
+        self._cb_state: str = "CLOSED"  # CLOSED (normal) | OPEN (fail fast) | HALF_OPEN (probe)
+        self._cb_failures: int = 0
+        self._cb_threshold: int = 5  # Failures in window to trip
+        self._cb_timeout: float = 30.0  # Seconds before OPEN → HALF_OPEN
+        self._cb_last_failure: float = 0.0
+        self._cb_window: float = 60.0  # Failure counting window (seconds)
+
         # References (set by agent after init)
         self.consciousness = None
         self.spatial_memory = None       # SpatialMemory instance
@@ -174,19 +183,83 @@ class StrategicBrain:
             log.error("strategic.anthropic_not_installed")
             return False
 
+    def _cb_check(self) -> bool:
+        """Check circuit breaker. Returns True if request is allowed."""
+        now = time.time()
+
+        if self._cb_state == "CLOSED":
+            return True
+
+        if self._cb_state == "OPEN":
+            # Has timeout elapsed? → try HALF_OPEN
+            if now - self._cb_last_failure >= self._cb_timeout:
+                self._cb_state = "HALF_OPEN"
+                log.info("strategic.circuit_breaker", state="HALF_OPEN",
+                         msg="probing API health")
+                return True
+            return False
+
+        # HALF_OPEN: allow one probe request
+        return True
+
+    def _cb_record_success(self):
+        """Record successful API call — reset circuit breaker."""
+        if self._cb_state != "CLOSED":
+            log.info("strategic.circuit_breaker", state="CLOSED",
+                     msg="API healthy, circuit reset")
+        self._cb_state = "CLOSED"
+        self._cb_failures = 0
+
+    def _cb_record_failure(self):
+        """Record API failure — may trip circuit breaker."""
+        now = time.time()
+
+        # Reset counter if outside failure window
+        if now - self._cb_last_failure > self._cb_window:
+            self._cb_failures = 0
+
+        self._cb_failures += 1
+        self._cb_last_failure = now
+
+        if self._cb_state == "HALF_OPEN":
+            # Probe failed — go back to OPEN
+            self._cb_state = "OPEN"
+            log.warning("strategic.circuit_breaker", state="OPEN",
+                        msg="probe failed, re-opening circuit",
+                        timeout_s=self._cb_timeout)
+        elif self._cb_failures >= self._cb_threshold:
+            self._cb_state = "OPEN"
+            log.warning("strategic.circuit_breaker", state="OPEN",
+                        failures=self._cb_failures,
+                        msg=f"threshold {self._cb_threshold} reached, failing fast",
+                        timeout_s=self._cb_timeout)
+
     async def _call_api_with_retry(self, **kwargs) -> Optional[object]:
         """
-        Call Claude API with exponential backoff retry.
+        Call Claude API with exponential backoff retry + circuit breaker.
+
+        Circuit breaker prevents hammering a dead API:
+        - CLOSED: normal operation
+        - OPEN: fail fast (return None immediately) for cb_timeout seconds
+        - HALF_OPEN: allow one probe, trip back to OPEN on failure
 
         Retries on: timeout, connection error, rate limit (503/529).
         Does NOT retry on: auth error (401), bad request (400).
-        Returns None after all retries exhausted.
+        Returns None after all retries exhausted or if circuit is OPEN.
         """
+        # Circuit breaker gate
+        if not self._cb_check():
+            log.debug("strategic.circuit_open",
+                      msg="API circuit breaker OPEN, failing fast")
+            return None
+
         last_error = None
 
         for attempt in range(self._max_retries):
             try:
-                return await self.client.messages.create(**kwargs)
+                result = await self.client.messages.create(**kwargs)
+                self._cb_record_success()
+                return result
             except Exception as e:
                 last_error = e
                 error_type = type(e).__name__
@@ -201,6 +274,7 @@ class StrategicBrain:
                     log.error("strategic.api_fatal",
                               error=str(e)[:120], type=error_type,
                               attempt=attempt + 1)
+                    self._cb_record_failure()
                     return None
 
                 # Exponential backoff: 1s, 2s, 4s
@@ -211,10 +285,12 @@ class StrategicBrain:
                             next_delay_s=delay)
                 await asyncio.sleep(delay)
 
-        # All retries exhausted
+        # All retries exhausted — record failure for circuit breaker
+        self._cb_record_failure()
         log.error("strategic.api_exhausted",
                   error=str(last_error)[:100] if last_error else "unknown",
-                  retries=self._max_retries)
+                  retries=self._max_retries,
+                  cb_state=self._cb_state)
         return None
 
     async def think(self, snapshot: dict) -> Optional[dict]:
@@ -247,8 +323,7 @@ class StrategicBrain:
             len(combat.get("nearby_players", [])),
             snapshot.get("active_skill", ""),
         )
-        import hashlib as _hl
-        context_hash = int(_hl.md5(str(diff_key).encode()).hexdigest()[:16], 16)
+        context_hash = int(hashlib.md5(str(diff_key).encode()).hexdigest()[:16], 16)
 
         if context_hash == self._last_context_hash:
             # State hasn't materially changed — skip API call
@@ -259,8 +334,7 @@ class StrategicBrain:
         self._last_meaningful_change = time.time()
 
         # Check cache (avoid identical consecutive calls)
-        import hashlib as _hl2
-        cache_key = _hl2.sha256(context.encode()).hexdigest()[:32]
+        cache_key = hashlib.sha256(context.encode()).hexdigest()[:32]
         if cache_key in self._cache:
             cached_time, cached_result = self._cache[cache_key]
             if time.time() - cached_time < self._cache_ttl:
@@ -296,9 +370,10 @@ class StrategicBrain:
             text = response.content[0].text
             parsed = self._parse_json(text)
 
-            # Update conversation history
+            # Update conversation history (explicit trim prevents memory leak)
             self._conversation.append({"role": "user", "content": context})
             self._conversation.append({"role": "assistant", "content": text})
+            self._conversation = self._conversation[-self._max_history * 2:]
 
             # Cache
             decisions = parsed.get("decisions", {})
@@ -346,14 +421,20 @@ class StrategicBrain:
             f"Target:{combat.get('current_target') or '-'}",
         ]
 
-        # Battle list (compact)
-        if combat["battle_list"]:
-            bl = " ".join(f"{c['name']}({c['hp']}%)" for c in combat["battle_list"][:6])
+        # Battle list (compact, safe access for malformed creature dicts)
+        battle_list = combat.get("battle_list", [])
+        if battle_list:
+            bl = " ".join(
+                f"{c.get('name', '?')}({c.get('hp', 0)}%)" for c in battle_list[:6]
+            )
             lines.append(f"Battle: {bl}")
 
-        # Players
-        if combat["nearby_players"]:
-            pl = " ".join(f"{p['name']}[{p.get('skull','none')}]" for p in combat["nearby_players"])
+        # Players (safe access)
+        nearby_players = combat.get("nearby_players", [])
+        if nearby_players:
+            pl = " ".join(
+                f"{p.get('name', '?')}[{p.get('skull', 'none')}]" for p in nearby_players
+            )
             lines.append(f"Players: {pl}")
 
         # Supplies
@@ -494,3 +575,7 @@ Return JSON with:
     @property
     def error_rate(self) -> float:
         return self._errors / max(1, self._calls)
+
+    @property
+    def circuit_breaker_state(self) -> str:
+        return self._cb_state

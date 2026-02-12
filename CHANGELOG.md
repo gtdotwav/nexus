@@ -7,6 +7,35 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ---
 
 
+## [0.4.1] - 2026-02-12
+
+### Added
+
+- **Circuit breaker for Claude API**: StrategicBrain now has a 3-state circuit breaker (CLOSED → OPEN → HALF_OPEN). After 5 failures in 60s, stops hammering the API and fails fast. Probes every 30s. Prevents cascade failure if Claude API is unavailable
+- **Test infrastructure**: 46 tests covering EventBus (parallel handlers, error isolation, priority), GameState, StrategicBrain (circuit breaker, cache, state-diff, JSON parsing), and config validation. `pytest` + `pytest-asyncio`
+- **Config validation with Pydantic**: `core/config.py` — validates settings.yaml at startup. Typos and invalid values now crash immediately with clear error messages instead of failing silently mid-session. All config models have sensible defaults
+- **EventBus parallel handler execution**: Async handlers now run concurrently via `asyncio.gather` instead of sequentially. One slow handler (dashboard broadcast) no longer blocks others (healing reaction)
+
+### Fixed
+
+- **games/tibia/adapter.py — CRITICAL broken import**: `from perception.game_reader import GameReader` referenced deleted v1 file. Would crash with ImportError at runtime. Fixed to use `GameReaderV2`
+- **core/consciousness.py — fingerprint dedup lost ordering**: `_recent_fingerprints` was a `set` with manual pruning via `set(list(set)[-300:])`. Sets are unordered, so pruning kept random fingerprints instead of most recent. Replaced with `deque(maxlen=500)` which auto-evicts oldest
+- **brain/strategic.py — conversation history memory leak**: `_conversation` list was appended to but only trimmed at API call time via slice, not after append. Added explicit trim after every append
+- **brain/strategic.py — unsafe creature dict access**: `c['name']` and `c['hp']` in `_build_context()` crashed on malformed creature dicts. Changed to safe `.get()` with defaults
+- **actions/explorer.py — diagonal movement without input lock**: `_move()` pressed keys without `asyncio.Lock`, risking interleaved press/release with other async tasks
+- **actions/explorer.py — duplicate import**: `import random` at module level AND inside `_move()`. Removed duplicate
+- **brain/reasoning.py — unused Counter import**: Imported but never used. Removed
+- **brain/reasoning.py, actions/explorer.py — stale TYPE_CHECKING imports**: Referenced deleted `spatial_memory.py`. Updated to `spatial_memory_v2`
+
+### Infrastructure
+
+- CI: Added pytest step (runs 46 tests)
+- CI: Added `core.config` to import check list
+- `pyproject.toml`: Version 0.4.1, added pytest config section
+- `config/settings.yaml.example`: Version 0.4.1
+
+---
+
 ## [0.4.0] - 2026-02-12
 
 ### Removed (Stack Cleanup)

@@ -31,7 +31,7 @@ from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.state import GameState
-    from perception.spatial_memory import SpatialMemory
+    from perception.spatial_memory_v2 import SpatialMemoryV2 as SpatialMemory
     from actions.navigator import Navigator
 
 log = structlog.get_logger()
@@ -462,20 +462,20 @@ class Explorer:
         if len(keys) == 1:
             await self.navigator.input.press_key(keys[0])
         elif len(keys) == 2:
-            # Diagonal: press both keys together
+            # Diagonal: press both keys together with input lock
             inp = self.navigator.input
             if inp._pynput_available and inp._keyboard:
-                import random
                 k1 = inp._key_map.get(keys[0])
                 k2 = inp._key_map.get(keys[1])
                 if k1 and k2:
                     hold_min, hold_max = inp.config["key_hold_range"]
                     hold_time = random.uniform(hold_min, hold_max)
-                    inp._keyboard.press(k1)
-                    inp._keyboard.press(k2)
-                    await asyncio.sleep(hold_time)
-                    inp._keyboard.release(k2)
-                    inp._keyboard.release(k1)
+                    async with inp._input_lock:
+                        inp._keyboard.press(k1)
+                        inp._keyboard.press(k2)
+                        await asyncio.sleep(hold_time)
+                        inp._keyboard.release(k2)
+                        inp._keyboard.release(k1)
 
     def _delta_to_direction(self, dx: int, dy: int) -> str:
         """Convert dx/dy delta to compass direction."""

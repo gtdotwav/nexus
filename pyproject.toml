@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-agent"
-version = "0.4.0"
+version = "0.4.1"
 description = "NEXUS — Autonomous Gaming Agent with Dual-Brain AI Architecture"
 readme = "README.md"
 license = {text = "MIT"}
@@ -90,6 +90,13 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
 
 [tool.mypy]
 python_version = "3.11"

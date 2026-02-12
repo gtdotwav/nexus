@@ -85,12 +85,12 @@ class TibiaAdapter(GameAdapter):
 
         try:
             from perception.screen_capture import ScreenCapture
-            from perception.game_reader import GameReader
+            from perception.game_reader_v2 import GameReaderV2
             from core.state import GameState
 
             state = GameState()
             self.screen_capture = ScreenCapture(config.get("perception", {}))
-            self.game_reader = GameReader(state, config.get("perception", {}))
+            self.game_reader = GameReaderV2(state, config.get("perception", {}))
 
             await self.screen_capture.initialize()
             self._initialized = True

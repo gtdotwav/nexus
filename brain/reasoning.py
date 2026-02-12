@@ -24,13 +24,13 @@ from __future__ import annotations
 import math
 import time
 import structlog
-from collections import Counter, deque
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.state import GameState
-    from perception.spatial_memory import SpatialMemory
+    from perception.spatial_memory_v2 import SpatialMemoryV2 as SpatialMemory
 
 log = structlog.get_logger()
 

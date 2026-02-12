@@ -135,7 +135,7 @@ class Consciousness:
         self.working_memory: deque[Memory] = deque(maxlen=1000)
         self.core_memories: list[Memory] = []
         self._memory_index: dict[str, list[Memory]] = {}  # category → memories (fast lookup)
-        self._recent_fingerprints: set = set()  # Dedup recent memories
+        self._recent_fingerprints: deque = deque(maxlen=500)  # Dedup (ordered, auto-pruned)
 
         # ─── Goals ────────────────────────────────────────
         self.active_goals: list[Goal] = []
@@ -383,12 +383,10 @@ class Consciousness:
             context=context or {},
         )
 
-        # Dedup: skip if same fingerprint in last 100 memories
+        # Dedup: skip if same fingerprint seen recently (deque preserves insertion order)
         if entry.fingerprint in self._recent_fingerprints:
             return
-        self._recent_fingerprints.add(entry.fingerprint)
-        if len(self._recent_fingerprints) > 500:
-            self._recent_fingerprints = set(list(self._recent_fingerprints)[-300:])
+        self._recent_fingerprints.append(entry.fingerprint)  # Auto-evicts oldest at maxlen
 
         self.working_memory.append(entry)
 
