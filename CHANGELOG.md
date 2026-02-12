@@ -7,6 +7,33 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ---
 
 
+## [0.2.0] - 2026-02-12
+
+### Added
+
+- **CLAUDE.md**: Shared context file for 3 Claude AI instances — auto-read at session start, contains full architecture map, conventions, dependency warnings, and recent changes
+- **core/loops/ package**: 9 independent loop files extracted from agent.py — each dev can modify their own loop without conflicts
+- **core/state/ package**: State split into enums.py, models.py, game_state.py with backward-compatible `__init__.py` re-exports
+
+### Changed
+
+- **core/agent.py**: Refactored from 845 to 414 lines — now a thin orchestrator that imports loops from `core/loops/` package via `ALL_LOOPS` registry
+- **CI workflow**: Updated to verify 37 modules (was 24) including all new state/ and loops/ submodules
+- **README.md**: Updated project structure to reflect new package architecture
+- **pyproject.toml**: Version bump to 0.2.0
+
+### Removed
+
+- **core/state.py** (monolithic): Replaced by `core/state/` package with 4 files
+
+### Architecture
+
+- 3 devs can now work simultaneously: Dev A on `core/loops/strategic.py`, Dev B on `core/loops/perception.py`, Dev C on `core/state/models.py` — zero merge conflicts
+- New loop = create file + register in `core/loops/__init__.py` — no need to touch agent.py
+- New data model = add to `core/state/models.py` — no need to touch game_state.py
+
+---
+
 ## [0.1.1] - 2026-02-12
 
 ### Added

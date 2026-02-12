@@ -3,6 +3,10 @@ NEXUS Agent - Game State Manager
 
 Central state store that all components read from and write to.
 Thread-safe, fast access, with change notification system.
+
+WARNING: 13 files import from this module. Any change here
+must be verified against all dependents:
+    grep -r "from core.state" --include="*.py" .
 """
 
 from __future__ import annotations
@@ -10,86 +14,16 @@ from __future__ import annotations
 import time
 import threading
 import structlog
-from dataclasses import dataclass, field
-from enum import Enum, auto
 from typing import Optional, Callable
 from collections import deque
 
+from core.state.enums import AgentMode, ThreatLevel
+from core.state.models import (
+    Position, CreatureState, SupplyCount,
+    SessionMetrics, CombatLogEntry,
+)
+
 log = structlog.get_logger()
-
-
-class AgentMode(Enum):
-    IDLE = auto()
-    HUNTING = auto()
-    FLEEING = auto()
-    LOOTING = auto()
-    NAVIGATING = auto()
-    TRADING = auto()
-    HEALING_CRITICAL = auto()
-    DEPOSITING = auto()
-    REFILLING = auto()
-    CREATING_SKILL = auto()
-    EXPLORING = auto()
-    PAUSED = auto()
-
-
-class ThreatLevel(Enum):
-    NONE = auto()
-    LOW = auto()       # Unknown player nearby
-    MEDIUM = auto()    # Player following or approaching
-    HIGH = auto()      # Player attacking / skull on
-    CRITICAL = auto()  # Multiple PKs, trapped
-
-
-@dataclass
-class Position:
-    x: int = 0
-    y: int = 0
-    z: int = 7  # Default floor level in Tibia
-
-
-@dataclass
-class CreatureState:
-    name: str
-    hp_percent: float
-    distance: int
-    is_attacking: bool = False
-    is_player: bool = False
-    skull: Optional[str] = None  # white, red, black, etc.
-    last_seen: float = 0.0
-
-
-@dataclass
-class SupplyCount:
-    great_health_potions: int = 0
-    great_mana_potions: int = 0
-    great_spirit_potions: int = 0
-    ultimate_health_potions: int = 0
-    ammunition: int = 0
-    runes: int = 0
-
-
-@dataclass
-class SessionMetrics:
-    start_time: float = 0.0
-    xp_gained: int = 0
-    xp_per_hour: float = 0.0
-    loot_value: int = 0
-    profit_per_hour: float = 0.0
-    deaths: int = 0
-    kills: int = 0
-    supplies_used: int = 0
-    close_calls: int = 0  # Times HP dropped below critical
-
-
-@dataclass
-class CombatLogEntry:
-    timestamp: float
-    event_type: str  # "damage_taken", "damage_dealt", "heal", "death", "kill"
-    source: str
-    target: str
-    value: int
-    details: str = ""
 
 
 class GameState:
@@ -168,7 +102,6 @@ class GameState:
             self.hp_max = maximum
             new_percent = self.hp_percent
 
-            # Track close calls
             if new_percent < 30 and old_percent >= 30:
                 self.session.close_calls += 1
 
@@ -191,7 +124,6 @@ class GameState:
             self.battle_list = creatures
             self.nearby_players = [c for c in creatures if c.is_player]
 
-            # Auto-assess threat level
             hostile_players = [
                 p for p in self.nearby_players
                 if p.skull in ("white", "red", "black") or p.is_attacking
@@ -252,10 +184,7 @@ class GameState:
             self._notify("mode_changed", {"old": old_mode, "new": mode})
 
     def get_snapshot(self) -> dict:
-        """
-        Create a full state snapshot for the strategic brain.
-        This is what gets sent to Claude API for decision-making.
-        """
+        """Full state snapshot for the strategic brain."""
         with self._lock:
             return {
                 "timestamp": time.time(),

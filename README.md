@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/NEXUS-v0.1.1-blueviolet?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgNy4zMTJsMTAgNi4xNTYgMTAtNi4xNTZMMTIgMnptMCAxMy41NjRMMy4zMTIgOS44NzUgMiAxMC42ODhsMTAgNi4xNTYgMTAtNi4xNTZMMS42ODggOS44NzUgMTIgMTUuNTY0em0wIDUuMDYyTDMuMzEyIDE0LjkzOCAyIDE1Ljc1bDEwIDYuMTU2IDEwLTYuMTU2LTEuMzEyLS44MTJMMTIgMjAuNjI2eiIvPjwvc3ZnPg==" alt="NEXUS">
+  <img src="https://img.shields.io/badge/NEXUS-v0.2.0-blueviolet?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgNy4zMTJsMTAgNi4xNTYgMTAtNi4xNTZMMTIgMnptMCAxMy41NjRMMy4zMTIgOS44NzUgMiAxMC42ODhsMTAgNi4xNTYgMTAtNi4xNTZMMS42ODggOS44NzUgMTIgMTUuNTY0em0wIDUuMDYyTDMuMzEyIDE0LjkzOCAyIDE1Ljc1bDEwIDYuMTU2IDEwLTYuMTU2LTEuMzEyLS44MTJMMTIgMjAuNjI2eiIvPjwvc3ZnPg==" alt="NEXUS">
   <br>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/AI-Claude%20API-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude">
@@ -37,7 +37,7 @@ The player controls start/stop. Everything else is NEXUS.
 
 ```
 ╔═══════════════════════════════════════════════════════════════╗
-║                     N E X U S  v0.1.1                        ║
+║                     N E X U S  v0.2.0                        ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║                                                               ║
 ║   CONSCIOUSNESS (Always-On)                                   ║
@@ -102,52 +102,57 @@ The player controls start/stop. Everything else is NEXUS.
 
 ```
 nexus/
-├── core/                    # Core systems
-│   ├── agent.py             # Main orchestrator
-│   ├── state.py             # Thread-safe state + events
-│   ├── consciousness.py     # Memory, goals, emotions
-│   ├── event_bus.py         # Typed async event system
-│   ├── foundry.py           # Self-evolution engine
-│   └── recovery.py          # Death recovery system
-├── brain/                   # Decision layers
-│   ├── reactive.py          # Fast instinct (<25ms)
-│   ├── strategic.py         # Claude API reasoning
-│   └── reasoning.py         # Reasoning engine
-├── perception/              # Vision systems
-│   ├── screen_capture.py    # dxcam/mss capture
-│   ├── game_reader.py       # Legacy pixel reader
-│   ├── game_reader_v2.py    # Optimized pixel reader (<2ms)
-│   ├── spatial_memory.py    # Legacy JSON-based
-│   └── spatial_memory_v2.py # SQLite-backed (WAL mode)
-├── actions/                 # Game interactions
-│   ├── navigator.py         # A* pathfinding
-│   ├── looting.py           # Loot engine
-│   ├── explorer.py          # Map exploration
-│   ├── supply_manager.py    # Supply management
-│   └── behaviors.py         # Behavior patterns
-├── skills/                  # Skill system
-│   ├── engine.py            # Skill loader + A/B testing
-│   └── tibia/               # Game-specific skills
-├── games/                   # Game adapters
-│   ├── base.py              # Abstract game interface
-│   ├── registry.py          # Game registry
-│   └── tibia/               # Tibia adapter
-├── dashboard/               # Monitoring
-│   ├── server.py            # WebSocket server
-│   └── app.html             # Real-time dashboard
-├── scripts/                 # Setup & install
-│   ├── setup_wizard.py      # Interactive setup
-│   ├── install_macos.sh     # macOS installer
-│   └── install_windows.ps1  # Windows installer
-├── config/settings.yaml     # Configuration
-├── main.py                  # Entry point
-├── launcher.py              # Process launcher
-├── nexus_cli.py             # CLI interface
-├── pyproject.toml           # Package config
-└── requirements.txt         # Dependencies
+├── core/                        # Core systems
+│   ├── agent.py                 # Thin orchestrator (imports loops)
+│   ├── state/                   # State package (split for multi-dev)
+│   │   ├── __init__.py          # Backward-compatible re-exports
+│   │   ├── enums.py             # AgentMode, ThreatLevel
+│   │   ├── models.py            # Position, CreatureState, SupplyCount...
+│   │   └── game_state.py        # GameState class (13 dependents!)
+│   ├── loops/                   # Each loop = separate file
+│   │   ├── perception.py        # 30fps screen capture + spatial feed
+│   │   ├── reactive.py          # 40 ticks/s survival instinct
+│   │   ├── action.py            # 10 ticks/s navigation, loot, supply
+│   │   ├── strategic.py         # 3s Claude API + decision application
+│   │   ├── consciousness.py     # Multi-frequency awareness
+│   │   ├── evolution.py         # Foundry self-improvement
+│   │   ├── recovery.py          # Death detection + recovery
+│   │   ├── reasoning.py         # Local real-time inference
+│   │   └── metrics.py           # 60s performance tracking
+│   ├── consciousness.py         # Memory, goals, emotions
+│   ├── event_bus.py             # Typed async event system
+│   ├── foundry.py               # Self-evolution engine
+│   └── recovery.py              # Death recovery system
+├── brain/                       # Decision layers
+│   ├── reactive.py              # Fast instinct (<25ms)
+│   ├── strategic.py             # Claude API reasoning
+│   └── reasoning.py             # Reasoning engine
+├── perception/                  # Vision systems
+│   ├── screen_capture.py        # dxcam/mss capture
+│   ├── game_reader_v2.py        # Optimized pixel reader (<2ms)
+│   └── spatial_memory_v2.py     # SQLite-backed (WAL mode)
+├── actions/                     # Game interactions
+│   ├── navigator.py             # A* pathfinding
+│   ├── looting.py               # Loot engine
+│   ├── explorer.py              # Map exploration
+│   ├── supply_manager.py        # Supply management
+│   └── behaviors.py             # Behavior patterns
+├── skills/                      # Skill system
+│   ├── engine.py                # Skill loader + A/B testing
+│   └── tibia/                   # Game-specific YAML skills
+├── games/                       # Game adapters
+│   ├── base.py                  # Abstract game interface
+│   └── tibia/                   # Tibia adapter
+├── dashboard/                   # Monitoring
+│   ├── server.py                # WebSocket server
+│   └── app.html                 # Real-time dashboard
+├── CLAUDE.md                    # Shared context for AI assistants
+├── main.py                      # Entry point
+├── nexus_cli.py                 # CLI interface
+└── pyproject.toml               # Package config
 ```
 
-**47 files | 14,400+ lines | 62 classes | 243 methods**
+**51 files | 11,800+ lines | Multi-dev optimized architecture**
 
 ---
 
