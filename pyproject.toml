@@ -62,9 +62,9 @@ dev = [
 nexus = "nexus_cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/nexus-agent/nexus"
-Documentation = "https://nexus-agent.github.io"
-Repository = "https://github.com/nexus-agent/nexus"
+Homepage = "https://github.com/gtdotwav/nexus"
+Repository = "https://github.com/gtdotwav/nexus"
+Changelog = "https://github.com/gtdotwav/nexus/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = [
