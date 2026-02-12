@@ -1,14 +1,14 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════
-#  NEXUS — macOS Installer
+#  NEXUS — macOS Installer v0.5.0
 #
 #  Installs NEXUS on macOS (Intel + Apple Silicon).
-#  Handles: Python, dependencies, config, shortcuts.
+#  Handles: Python, Homebrew, dependencies, config,
+#           permissions guidance, desktop shortcut.
 #
 #  Usage:
-#    curl -fsSL https://nexus-agent.github.io/install.sh | bash
-#    -- or --
 #    bash scripts/install_macos.sh
+#    -- or double-click INSTALAR_MAC.command --
 # ═══════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -22,21 +22,22 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
-NEXUS_HOME="$HOME/.nexus"
-NEXUS_VERSION="0.1.0"
-MIN_PYTHON_VERSION="3.11"
+NEXUS_VERSION="0.5.0"
+NEXUS_DIR="$HOME/NEXUS"
+MIN_PYTHON_MAJOR=3
+MIN_PYTHON_MINOR=10
 
 banner() {
-    echo -e "${CYAN}"
-    echo "    ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗"
-    echo "    ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝"
-    echo "    ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗"
-    echo "    ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║"
-    echo "    ██║ ╚████║███████╗██╔╝ ╚██╗╚██████╔╝███████║"
-    echo "    ╚═╝  ╚═══╝╚══════╝╚═╝   ╚═╝ ╚═════╝╚══════╝"
-    echo -e "${NC}"
-    echo -e "    ${DIM}Autonomous Gaming Agent v${NEXUS_VERSION}${NC}"
-    echo -e "    ${DIM}macOS Installer${NC}"
+    echo ""
+    echo -e "${CYAN}    ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗${NC}"
+    echo -e "${CYAN}    ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝${NC}"
+    echo -e "${CYAN}    ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗${NC}"
+    echo -e "${CYAN}    ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║${NC}"
+    echo -e "${CYAN}    ██║ ╚████║███████╗██╔╝ ╚██╗╚██████╔╝███████║${NC}"
+    echo -e "${CYAN}    ╚═╝  ╚═══╝╚══════╝╚═╝   ╚═╝ ╚═════╝╚══════╝${NC}"
+    echo ""
+    echo -e "    ${DIM}Instalador Automatico v${NEXUS_VERSION} — macOS${NC}"
+    echo -e "    ${DIM}─────────────────────────────────────────────${NC}"
     echo ""
 }
 
@@ -45,38 +46,37 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${CYAN}→${NC} $1"; }
 
-# ─── Check macOS ──────────────────────────────────────
+# ─── STEP 0: Check macOS ──────────────────────────────
 
 check_macos() {
     if [[ "$(uname)" != "Darwin" ]]; then
-        fail "This installer is for macOS only."
-        echo "  For Windows, use: scripts/install_windows.ps1"
+        fail "Este instalador é para macOS."
+        echo "  Para Windows, use: INSTALAR.bat"
         exit 1
     fi
 
     local arch
     arch=$(uname -m)
     if [[ "$arch" == "arm64" ]]; then
-        ok "macOS Apple Silicon (arm64) detected"
+        ok "macOS Apple Silicon (M1/M2/M3) detectado"
     else
-        ok "macOS Intel (x86_64) detected"
+        ok "macOS Intel (x86_64) detectado"
     fi
 }
 
-# ─── Check/Install Python ────────────────────────────
+# ─── STEP 1: Check Python ────────────────────────────
 
-check_python() {
+find_python() {
     local python_cmd=""
 
-    # Check python3.11+ specifically
-    for cmd in python3.13 python3.12 python3.11 python3; do
+    for cmd in python3.13 python3.12 python3.11 python3.10 python3; do
         if command -v "$cmd" &> /dev/null; then
             local ver
             ver=$("$cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
             local major minor
             major=$(echo "$ver" | cut -d. -f1)
             minor=$(echo "$ver" | cut -d. -f2)
-            if [[ "$major" -ge 3 && "$minor" -ge 11 ]]; then
+            if [[ "$major" -ge "$MIN_PYTHON_MAJOR" && "$minor" -ge "$MIN_PYTHON_MINOR" ]]; then
                 python_cmd="$cmd"
                 break
             fi
@@ -86,209 +86,203 @@ check_python() {
     if [[ -n "$python_cmd" ]]; then
         local full_ver
         full_ver=$("$python_cmd" --version 2>&1)
-        ok "Python found: $full_ver ($python_cmd)"
+        ok "Python encontrado: $full_ver"
         echo "$python_cmd"
         return 0
     fi
 
-    # Python not found — offer to install
-    warn "Python $MIN_PYTHON_VERSION+ not found"
+    # Python not found — try Homebrew
+    warn "Python $MIN_PYTHON_MAJOR.$MIN_PYTHON_MINOR+ nao encontrado"
 
     if command -v brew &> /dev/null; then
-        info "Installing Python via Homebrew..."
+        info "Instalando Python via Homebrew..."
         brew install python@3.12
         python_cmd="python3.12"
-        ok "Python installed: $("$python_cmd" --version)"
+        ok "Python instalado: $("$python_cmd" --version)"
         echo "$python_cmd"
         return 0
     else
-        fail "Homebrew not found. Please install Python $MIN_PYTHON_VERSION+ manually:"
+        fail "Homebrew nao encontrado."
+        echo ""
+        info "Instala o Homebrew primeiro:"
+        echo '    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+        echo ""
+        info "Ou baixa o Python direto:"
         echo "    https://python.org/downloads/"
-        echo "  Or install Homebrew first:"
-        echo "    /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        echo ""
+        info "Depois roda este instalador de novo."
         exit 1
     fi
 }
 
-# ─── Create Virtual Environment ──────────────────────
+# ─── STEP 2: Check Git ───────────────────────────────
 
-setup_venv() {
-    local python_cmd="$1"
-
-    mkdir -p "$NEXUS_HOME"
-
-    if [[ ! -d "$NEXUS_HOME/venv" ]]; then
-        info "Creating virtual environment..."
-        "$python_cmd" -m venv "$NEXUS_HOME/venv"
-        ok "Virtual environment created"
-    else
-        ok "Virtual environment exists"
+check_git() {
+    if command -v git &> /dev/null; then
+        ok "Git encontrado"
+        return 0
     fi
 
-    # Activate
-    source "$NEXUS_HOME/venv/bin/activate"
-    ok "Virtual environment activated"
+    warn "Git nao encontrado"
+
+    if command -v brew &> /dev/null; then
+        info "Instalando Git via Homebrew..."
+        brew install git
+        ok "Git instalado"
+    else
+        # macOS Command Line Tools includes git
+        info "Instalando Xcode Command Line Tools (inclui Git)..."
+        xcode-select --install 2>/dev/null || true
+        echo ""
+        warn "Uma janela vai aparecer pedindo pra instalar."
+        info "Aceita e espera terminar, depois roda este instalador de novo."
+        exit 1
+    fi
 }
 
-# ─── Install Dependencies ────────────────────────────
+# ─── STEP 3: Clone or update repo ────────────────────
+
+clone_or_update() {
+    if [[ -d "$NEXUS_DIR/.git" ]]; then
+        info "Atualizando NEXUS existente..."
+        cd "$NEXUS_DIR"
+        git pull --quiet 2>/dev/null || warn "Pull falhou (sem internet?), continuando..."
+        ok "NEXUS atualizado"
+    else
+        if [[ -d "$NEXUS_DIR" ]]; then
+            info "Pasta NEXUS existe sem git, removendo..."
+            rm -rf "$NEXUS_DIR"
+        fi
+        info "Clonando repositorio..."
+        git clone https://github.com/gtdotwav/nexus.git "$NEXUS_DIR" --quiet
+        ok "NEXUS baixado em $NEXUS_DIR"
+    fi
+
+    cd "$NEXUS_DIR"
+}
+
+# ─── STEP 4: Install dependencies ────────────────────
 
 install_deps() {
-    info "Installing dependencies..."
+    local python_cmd="$1"
+
+    info "Instalando dependencias (pode demorar 1-2 min)..."
 
     # Upgrade pip
-    pip install --upgrade pip --quiet 2>/dev/null
+    "$python_cmd" -m pip install --upgrade pip --quiet 2>/dev/null
 
-    # Determine if we're in the repo or installing from scratch
-    local repo_dir
-    repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    # Install from pyproject.toml (editable mode)
+    "$python_cmd" -m pip install -e . --quiet 2>/dev/null || {
+        warn "Modo editavel falhou, tentando normal..."
+        "$python_cmd" -m pip install . --quiet 2>/dev/null
+    }
 
-    if [[ -f "$repo_dir/pyproject.toml" ]]; then
-        # Install from local repo
-        pip install -e "$repo_dir" --quiet 2>/dev/null
-        ok "NEXUS installed from local source"
+    # macOS-specific: mss for screen capture (cross-platform)
+    "$python_cmd" -m pip install mss --quiet 2>/dev/null || true
+
+    # macOS-specific: pyobjc for native window management (optional)
+    "$python_cmd" -m pip install pyobjc-framework-Quartz --quiet 2>/dev/null && {
+        ok "Dependencias instaladas (com captura nativa macOS)"
+    } || {
+        ok "Dependencias instaladas (captura via mss)"
+    }
+}
+
+# ─── STEP 5: Create config and directories ───────────
+
+setup_config() {
+    # Create data directory
+    mkdir -p "$NEXUS_DIR/data"
+    mkdir -p "$NEXUS_DIR/skills"
+
+    # Create config if doesn't exist
+    if [[ ! -f "$NEXUS_DIR/config/settings.yaml" ]]; then
+        if [[ -f "$NEXUS_DIR/config/settings.yaml.example" ]]; then
+            cp "$NEXUS_DIR/config/settings.yaml.example" "$NEXUS_DIR/config/settings.yaml"
+
+            # Patch config for macOS: change backend from dxcam to mss
+            if command -v sed &> /dev/null; then
+                sed -i '' 's/backend: "dxcam"/backend: "mss"/' "$NEXUS_DIR/config/settings.yaml" 2>/dev/null || true
+            fi
+
+            ok "Config criado (edite config/settings.yaml com seus hotkeys)"
+        fi
     else
-        # Install core dependencies manually
-        pip install \
-            opencv-python numpy Pillow pynput \
-            anthropic pyyaml structlog rich \
-            aiohttp click \
-            --quiet 2>/dev/null
-        ok "Core dependencies installed"
+        ok "Config ja existe"
     fi
-
-    # macOS-specific: screenshot library
-    pip install pyobjc-framework-Quartz --quiet 2>/dev/null || true
-    ok "macOS screen capture support installed"
 }
 
-# ─── Create Config ───────────────────────────────────
+# ─── STEP 6: Create launcher shortcut ────────────────
 
-create_config() {
-    local config_file="$NEXUS_HOME/config.yaml"
-
-    if [[ -f "$config_file" ]]; then
-        ok "Config already exists: $config_file"
-        return
-    fi
-
-    info "Creating default config..."
-
-    cat > "$config_file" << 'YAML'
-# NEXUS Configuration — macOS
-# Edit this file to customize your agent.
-
-agent:
-  game: tibia
-  character_name: YourCharacter
-  server: YourServer
-
-perception:
-  capture:
-    method: screenshot  # macOS uses screenshot method
-    fps: 30
-    game_window_title: Tibia
-
-reactive:
-  tick_rate_ms: 25
-  healing:
-    critical_hp: 30
-    medium_hp: 60
-    mana_threshold: 50
-  hotkeys:
-    heal_critical: F1
-    heal_medium: F2
-    mana_potion: F3
-    haste: F4
-    attack_spell: F5
-    area_spell: F6
-
-ai:
-  model_strategic: claude-sonnet-4-20250514
-  strategic_cycle_seconds: 3
-  max_tokens: 1024
-  temperature: 0.2
-  api_key_env: ANTHROPIC_API_KEY
-
-input:
-  human_delay_min_ms: 30
-  human_delay_max_ms: 80
-  click_variance_px: 3
-
-skills:
-  directory: skills/tibia
-  auto_create: true
-  auto_improve: true
-
-dashboard:
-  enabled: true
-  host: 127.0.0.1
-  port: 8420
-YAML
-
-    ok "Config created: $config_file"
-}
-
-# ─── Create Shell Command ────────────────────────────
-
-create_command() {
-    local bin_dir="$NEXUS_HOME/venv/bin"
-    local nexus_cmd="$bin_dir/nexus"
-
-    # The nexus command should already exist from pip install
-    if [[ -f "$nexus_cmd" ]]; then
-        ok "nexus command available in venv"
-    fi
-
-    # Create a convenience symlink in /usr/local/bin
-    local global_cmd="/usr/local/bin/nexus"
-    if [[ ! -f "$global_cmd" ]] && [[ -w "/usr/local/bin" ]]; then
-        cat > "$global_cmd" << SCRIPT
+create_shortcuts() {
+    # Create INICIAR_MAC.command in NEXUS directory
+    cat > "$NEXUS_DIR/INICIAR_MAC.command" << 'SCRIPT'
 #!/bin/bash
-source "$NEXUS_HOME/venv/bin/activate"
-exec python -m nexus_cli "\$@"
+cd "$(dirname "$0")"
+echo ""
+echo "  Iniciando NEXUS..."
+echo "  Abre o Tibia e loga no seu personagem antes!"
+echo ""
+
+# Try nexus CLI first, fallback to module
+if command -v nexus &> /dev/null; then
+    nexus start
+else
+    python3 -m nexus_cli start 2>/dev/null || python3 launcher.py
+fi
+
+echo ""
+echo "  NEXUS encerrado. Pressione Enter para fechar."
+read -r
 SCRIPT
-        chmod +x "$global_cmd"
-        ok "Global command created: nexus"
-    elif [[ -f "$global_cmd" ]]; then
-        ok "Global nexus command exists"
-    else
-        warn "Could not create global command (no write access to /usr/local/bin)"
-        info "You can use: source ~/.nexus/venv/bin/activate && nexus"
+    chmod +x "$NEXUS_DIR/INICIAR_MAC.command"
+
+    # Create Desktop shortcut
+    local desktop="$HOME/Desktop"
+    if [[ -d "$desktop" ]]; then
+        cat > "$desktop/NEXUS Agent.command" << SCRIPT
+#!/bin/bash
+cd "$NEXUS_DIR"
+source "$NEXUS_DIR/INICIAR_MAC.command"
+SCRIPT
+        chmod +x "$desktop/NEXUS Agent.command"
+        ok "Atalho criado na Area de Trabalho"
     fi
 }
 
-# ─── Create Desktop Shortcut ────────────────────────
+# ─── STEP 7: macOS Permissions Guide ─────────────────
 
-create_shortcut() {
-    local app_dir="$HOME/Desktop/NEXUS.command"
-
-    cat > "$app_dir" << SCRIPT
-#!/bin/bash
-cd "$NEXUS_HOME"
-source "$NEXUS_HOME/venv/bin/activate"
-python -m nexus_cli start --dashboard
-SCRIPT
-    chmod +x "$app_dir"
-    ok "Desktop shortcut created: NEXUS.command"
-}
-
-# ─── macOS Permissions ───────────────────────────────
-
-check_permissions() {
-    info "Checking macOS permissions..."
-
-    # Screen recording permission (needed for screen capture)
+show_permissions_guide() {
     echo ""
-    warn "NEXUS needs Screen Recording permission to capture the game."
-    info "Go to: System Settings → Privacy & Security → Screen Recording"
-    info "Add your Terminal app (or iTerm2, etc.) to the list."
+    echo -e "  ${YELLOW}╔═══════════════════════════════════════════════╗${NC}"
+    echo -e "  ${YELLOW}║       PERMISSOES IMPORTANTES DO macOS         ║${NC}"
+    echo -e "  ${YELLOW}╚═══════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${BOLD}O NEXUS precisa de 2 permissoes no macOS:${NC}"
+    echo ""
+    echo -e "  ${CYAN}1. Gravacao de Tela (Screen Recording)${NC}"
+    echo -e "     ${DIM}Para capturar a tela do jogo${NC}"
+    echo -e "     Vai em: Ajustes do Sistema → Privacidade e Seguranca"
+    echo -e "             → Gravacao de Tela → Adiciona o Terminal"
+    echo ""
+    echo -e "  ${CYAN}2. Acessibilidade (Accessibility)${NC}"
+    echo -e "     ${DIM}Para controlar teclado e mouse${NC}"
+    echo -e "     Vai em: Ajustes do Sistema → Privacidade e Seguranca"
+    echo -e "             → Acessibilidade → Adiciona o Terminal"
+    echo ""
+    echo -e "  ${DIM}Se usar iTerm2, Warp, ou outro terminal, adiciona ele ao inves${NC}"
+    echo -e "  ${DIM}do Terminal padrao do macOS.${NC}"
     echo ""
 
-    # Accessibility permission (needed for keyboard/mouse control)
-    warn "NEXUS needs Accessibility permission for keyboard/mouse control."
-    info "Go to: System Settings → Privacy & Security → Accessibility"
-    info "Add your Terminal app to the list."
+    # Try to open System Preferences
+    info "Quer abrir as Configuracoes de Privacidade agora? (s/n)"
+    read -r -n 1 response
     echo ""
+    if [[ "$response" == "s" || "$response" == "S" ]]; then
+        open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || \
+        open "x-apple.systempreferences:com.apple.preference.security" 2>/dev/null || true
+        info "Janela de Configuracoes aberta"
+    fi
 }
 
 # ═══════════════════════════════════════════════════════
@@ -298,43 +292,57 @@ check_permissions() {
 main() {
     banner
 
-    echo -e "${BOLD}Checking system...${NC}\n"
+    echo -e "  ${BOLD}[1/6] Verificando macOS...${NC}"
     check_macos
-
     echo ""
-    echo -e "${BOLD}Setting up Python...${NC}\n"
+
+    echo -e "  ${BOLD}[2/6] Verificando Python...${NC}"
     local python_cmd
-    python_cmd=$(check_python)
+    python_cmd=$(find_python)
+    echo ""
+
+    echo -e "  ${BOLD}[3/6] Verificando Git...${NC}"
+    check_git
+    echo ""
+
+    echo -e "  ${BOLD}[4/6] Baixando NEXUS...${NC}"
+    clone_or_update
+    echo ""
+
+    echo -e "  ${BOLD}[5/6] Instalando dependencias...${NC}"
+    install_deps "$python_cmd"
+    echo ""
+
+    echo -e "  ${BOLD}[6/6] Configurando...${NC}"
+    setup_config
+    create_shortcuts
+    echo ""
+
+    echo -e "  ${GREEN}═══════════════════════════════════════════${NC}"
+    echo -e "  ${GREEN}✓ INSTALACAO COMPLETA!${NC}"
+    echo -e "  ${GREEN}═══════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "  Arquivos em: ${CYAN}$NEXUS_DIR${NC}"
+    echo ""
+    echo -e "  ${BOLD}COMO USAR:${NC}"
+    echo -e "  ──────────"
+    echo -e "  1. Edita ${CYAN}config/settings.yaml${NC} com seu personagem e hotkeys"
+    echo -e "  2. Abre o Tibia e loga"
+    echo -e "  3. Double-click em ${CYAN}\"NEXUS Agent\"${NC} na Area de Trabalho"
+    echo -e "     (ou roda ${CYAN}nexus start${NC} no terminal)"
+    echo ""
+    echo -e "  ${BOLD}OPCIONAL (IA estrategica):${NC}"
+    echo -e "  ──────────────────────────"
+    echo -e "  Se quiser o cerebro estrategico (Claude pensando junto):"
+    echo -e "  ${CYAN}export ANTHROPIC_API_KEY=\"sua_chave_aqui\"${NC}"
+    echo -e "  Sem isso, o bot funciona normal (so sem a parte de IA avancada)"
+    echo ""
+
+    show_permissions_guide
 
     echo ""
-    echo -e "${BOLD}Creating environment...${NC}\n"
-    setup_venv "$python_cmd"
-
-    echo ""
-    echo -e "${BOLD}Installing dependencies...${NC}\n"
-    install_deps
-
-    echo ""
-    echo -e "${BOLD}Configuring NEXUS...${NC}\n"
-    create_config
-
-    echo ""
-    echo -e "${BOLD}Setting up commands...${NC}\n"
-    create_command
-    create_shortcut
-
-    echo ""
-    check_permissions
-
-    echo -e "${BOLD}${GREEN}Installation complete!${NC}\n"
-    echo -e "  ${CYAN}Quick start:${NC}"
-    echo -e "    1. Set your API key: ${CYAN}export ANTHROPIC_API_KEY=your_key${NC}"
-    echo -e "    2. Edit config: ${CYAN}$NEXUS_HOME/config.yaml${NC}"
-    echo -e "    3. Start NEXUS: ${CYAN}nexus start${NC}"
-    echo -e "    4. Open dashboard: ${CYAN}http://127.0.0.1:8420${NC}"
-    echo ""
-    echo -e "  ${DIM}Or double-click NEXUS.command on your Desktop.${NC}"
-    echo ""
+    info "Pressione Enter para fechar."
+    read -r
 }
 
 main "$@"

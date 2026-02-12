@@ -11,7 +11,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$NEXUS_VERSION = "0.4.2"
+$NEXUS_VERSION = "0.5.0"
 $NEXUS_HOME = "$env:USERPROFILE\NEXUS"
 $MIN_PYTHON_MAJOR = 3
 $MIN_PYTHON_MINOR = 10
