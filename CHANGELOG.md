@@ -6,6 +6,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ---
 
+
+## [0.1.1] - 2026-02-12
+
+### Added
+
+- **GitHub Actions CI**: Automated syntax check, import verification, secret leak detection on every push to main
+- **Git Hooks (pre-push)**: Local protection blocking syntax errors and API key leaks before push
+- **Git Hooks (pre-commit)**: Blocks accidental commit of settings.yaml and debug breakpoints
+- **CONTRIBUTING.md**: Complete collaboration guide with 6 failure modes analysis, dependency map, workflow protocol
+- **README.md**: Professional README with badges, architecture diagram, tech stack, quick start, roadmap
+- **CHANGELOG.md**: Version tracking with Keep a Changelog format
+- **Version Bump Script**: `scripts/bump_version.py` auto-updates pyproject.toml, README badge, and CHANGELOG
+- **Settings Example**: `config/settings.yaml.example` for safe onboarding without exposing API keys
+
+### Changed
+
+- **pyproject.toml**: Fixed URLs to point to gtdotwav/nexus, added Changelog link
+
+---
+
 ## [0.1.0] - 2026-02-11
 
 ### Added

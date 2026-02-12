@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "NEXUS — Autonomous Gaming Agent with Dual-Brain AI Architecture"
 readme = "README.md"
 license = {text = "MIT"}

@@ -1,0 +1,127 @@
+name: NEXUS CI — Guard Main
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  guard:
+    name: Syntax + Imports + Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml structlog anthropic pynput aiohttp click rich numpy opencv-python-headless Pillow aiohttp-cors
+
+      - name: Check syntax (all .py files)
+        run: |
+          echo "=== Checking syntax ==="
+          errors=0
+          for f in $(find . -name "*.py" -not -path "./.git/*" -not -path "./venv/*"); do
+            if ! python -m py_compile "$f" 2>/dev/null; then
+              echo "SYNTAX ERROR: $f"
+              python -m py_compile "$f" 2>&1 || true
+              errors=$((errors + 1))
+            fi
+          done
+          if [ $errors -gt 0 ]; then
+            echo "::error::$errors files with syntax errors"
+            exit 1
+          fi
+          echo "All files passed syntax check"
+
+      - name: Check critical imports
+        run: |
+          echo "=== Checking critical imports ==="
+          python -c "
+          import sys
+          failed = []
+          modules = [
+              'core.state',
+              'core.event_bus',
+              'core.consciousness',
+              'core.foundry',
+              'core.recovery',
+              'core.agent',
+              'brain.reactive',
+              'brain.strategic',
+              'brain.reasoning',
+              'perception.screen_capture',
+              'perception.game_reader',
+              'perception.game_reader_v2',
+              'perception.spatial_memory',
+              'perception.spatial_memory_v2',
+              'actions.navigator',
+              'actions.looting',
+              'actions.explorer',
+              'actions.supply_manager',
+              'actions.behaviors',
+              'skills.engine',
+              'games.base',
+              'games.registry',
+              'games.tibia.adapter',
+              'dashboard.server',
+          ]
+          for mod in modules:
+              try:
+                  __import__(mod)
+              except Exception as e:
+                  failed.append(f'{mod}: {e}')
+          if failed:
+              print('IMPORT FAILURES:')
+              for f in failed:
+                  print(f'  {f}')
+              sys.exit(1)
+          print(f'All {len(modules)} modules imported successfully')
+          "
+
+      - name: Version consistency check
+        run: |
+          python -c "
+          import re
+          # Read version from pyproject.toml
+          with open('pyproject.toml') as f:
+              match = re.search(r'version\s*=\s*\"([^\"]+)\"', f.read())
+              version = match.group(1) if match else 'NOT FOUND'
+          # Read version from CHANGELOG
+          with open('CHANGELOG.md') as f:
+              match = re.search(r'\[(\d+\.\d+\.\d+)\]', f.read())
+              changelog_version = match.group(1) if match else 'NOT FOUND'
+          print(f'pyproject.toml: {version}')
+          print(f'CHANGELOG.md:  {changelog_version}')
+          if version != changelog_version:
+              print('WARNING: Version mismatch (not blocking)')
+          "
+
+      - name: Check for secrets leak
+        run: |
+          echo "=== Checking for secrets ==="
+          if grep -r "sk-ant-" --include="*.py" --include="*.yaml" --include="*.yml" --include="*.md" . 2>/dev/null | grep -v ".example" | grep -v ".gitignore"; then
+            echo "::error::Possible API key leak detected!"
+            exit 1
+          fi
+          if grep -r "ghp_" --include="*.py" --include="*.yaml" --include="*.yml" --include="*.md" . 2>/dev/null | grep -v ".gitignore"; then
+            echo "::error::Possible GitHub token leak detected!"
+            exit 1
+          fi
+          echo "No secrets detected"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== NEXUS CI Summary ==="
+          file_count=$(find . -name "*.py" -not -path "./.git/*" | wc -l)
+          line_count=$(find . -name "*.py" -not -path "./.git/*" -exec wc -l {} + 2>/dev/null | tail -1 | awk '{print $1}')
+          echo "Python files: $file_count"
+          echo "Total lines:  $line_count"
