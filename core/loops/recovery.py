@@ -33,6 +33,8 @@ async def run(agent: NexusAgent) -> None:
 
             elif action == "respawned":
                 agent.state.set_mode(AgentMode.NAVIGATING)
+                # Reset death flag in game reader so perception resumes
+                agent.game_reader.reset_death_flag()
                 # Notify consciousness for learning
                 agent.consciousness.remember(
                     "recovery",

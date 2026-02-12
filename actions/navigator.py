@@ -196,8 +196,27 @@ class Navigator:
             # Still walking — click toward waypoint
             return await self._walk_toward(wp)
 
+    def _recalibrate_position(self, wp: Waypoint):
+        """
+        Recalibrate the game_reader position when we arrive at a known waypoint.
+        This corrects accumulated drift from phase correlation tracking.
+        """
+        try:
+            # Walk up to the agent to find game_reader
+            agent = None
+            if hasattr(self.state, '_agent_ref'):
+                agent = self.state._agent_ref
+            if agent and hasattr(agent, 'game_reader'):
+                agent.game_reader.set_position(wp.x, wp.y, wp.z)
+                log.debug("navigator.recalibrated_position", x=wp.x, y=wp.y, z=wp.z)
+        except Exception:
+            pass  # Best effort — don't crash if wiring is missing
+
     async def _execute_waypoint(self, wp: Waypoint) -> str:
         """Execute the action for a reached waypoint."""
+
+        # Recalibrate position at known waypoints to prevent drift
+        self._recalibrate_position(wp)
 
         if wp.action == NavAction.WALK:
             self._advance()

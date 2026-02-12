@@ -50,6 +50,9 @@ class Skill:
     # Source file
     file_path: Optional[str] = None
 
+    # Raw YAML data — needed by agent._activate_skill() for loot/behaviors
+    _raw_data: dict = field(default_factory=dict)
+
     @classmethod
     def from_yaml(cls, path: str) -> "Skill":
         """Load a skill from YAML file."""
@@ -69,6 +72,7 @@ class Skill:
             supplies=data.get("supplies", {}),
             anti_pk=data.get("anti_pk", {}),
             file_path=path,
+            _raw_data=data,  # Keep full raw data for loot, behaviors, etc.
         )
 
     def to_yaml(self) -> str:

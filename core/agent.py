@@ -133,6 +133,9 @@ class NexusAgent:
         self.reactive_brain.consciousness = self.consciousness
         self.foundry.reactive_brain = self.reactive_brain
 
+        # Back-reference so subsystems can access each other via agent
+        self.state._agent_ref = self
+
         # Wire state events → consciousness + event bus
         self._wire_consciousness_events()
         self._wire_event_bus()
@@ -176,6 +179,11 @@ class NexusAgent:
         # Phase 2: PERCEIVE — Calibrate perception
         log.info("nexus.calibrating", phase="perception")
         await self.screen_capture.initialize()
+
+        # Auto-calibrate screen regions if not manually configured
+        # (detects HP bar, mana bar, battle list, minimap positions)
+        await self._auto_calibrate_regions()
+
         await self.game_reader.calibrate()
 
         # Phase 3: PREPARE — Load skills and configure subsystems
@@ -270,6 +278,56 @@ class NexusAgent:
             reasoning=self.reasoning_engine.stats,
             explorer=self.explorer.stats,
         )
+
+    async def _auto_calibrate_regions(self):
+        """
+        Auto-detect UI regions if config has placeholder values (x=0, y=0).
+        Takes a screenshot and uses the calibrator to find HP bar, mana bar,
+        battle list, and minimap positions.
+        """
+        from perception.calibrator import ScreenCalibrator
+
+        regions = self.config.get("perception", {}).get("regions", {})
+
+        # Check if regions are placeholders (all at 0,0)
+        all_zero = all(
+            r.get("x", 0) == 0 and r.get("y", 0) == 0
+            for r in regions.values()
+            if isinstance(r, dict)
+        )
+
+        if not all_zero:
+            log.info("nexus.regions_configured", source="manual_config")
+            return
+
+        log.info("nexus.auto_calibrating_regions",
+                 reason="all regions at (0,0) — placeholder config detected")
+
+        # Take a screenshot for calibration
+        frame = await self.screen_capture.capture()
+        if frame is None:
+            log.warning("nexus.calibration_skipped", reason="no frame captured")
+            return
+
+        calibrator = ScreenCalibrator()
+        detected = calibrator.auto_detect(frame)
+
+        if detected:
+            # Update the game reader's regions
+            self.game_reader.regions.update(detected)
+
+            # Update minimap center for navigator
+            minimap_config = calibrator.get_minimap_center(detected)
+            if minimap_config:
+                nav_config = self.config.get("navigation", {})
+                nav_config["minimap_region"] = minimap_config
+
+            log.info("nexus.auto_calibrated",
+                     regions=list(detected.keys()),
+                     count=len(detected))
+        else:
+            log.warning("nexus.calibration_failed",
+                        hint="Run with manually configured regions in settings.yaml")
 
     async def _monitored_loop(self, name: str, loop_fn) -> None:
         """
