@@ -11,10 +11,8 @@
 #    -- or double-click INSTALAR_MAC.command --
 #
 #  One-liner (bypasses Gatekeeper):
-#    bash -c "$(curl -fsSL https://raw.githubusercontent.com/gtdotwav/nexus/main/scripts/install_macos.sh)"
+#    bash <(curl -fsSL https://raw.githubusercontent.com/gtdotwav/nexus/main/scripts/install_macos.sh)
 # ═══════════════════════════════════════════════════════
-
-set -euo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -29,6 +27,9 @@ NEXUS_VERSION="0.5.0"
 NEXUS_DIR="$HOME/NEXUS"
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=10
+
+# Global: set by find_python()
+PYTHON_CMD=""
 
 banner() {
     echo ""
@@ -49,13 +50,19 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${CYAN}→${NC} $1"; }
 
+die() {
+    fail "$1"
+    echo ""
+    echo "  Pressione Enter para fechar."
+    read -r </dev/tty 2>/dev/null || true
+    exit 1
+}
+
 # ─── STEP 0: Check macOS ──────────────────────────────
 
 check_macos() {
     if [[ "$(uname)" != "Darwin" ]]; then
-        fail "Este instalador é para macOS."
-        echo "  Para Windows, use: INSTALAR.bat"
-        exit 1
+        die "Este instalador e para macOS. Para Windows, use: INSTALAR.bat"
     fi
 
     local arch
@@ -68,9 +75,10 @@ check_macos() {
 }
 
 # ─── STEP 1: Check Python ────────────────────────────
+# Sets global PYTHON_CMD (avoids stdout capture bug)
 
 find_python() {
-    local python_cmd=""
+    PYTHON_CMD=""
 
     for cmd in python3.13 python3.12 python3.11 python3.10 python3; do
         if command -v "$cmd" &> /dev/null; then
@@ -80,17 +88,16 @@ find_python() {
             major=$(echo "$ver" | cut -d. -f1)
             minor=$(echo "$ver" | cut -d. -f2)
             if [[ "$major" -ge "$MIN_PYTHON_MAJOR" && "$minor" -ge "$MIN_PYTHON_MINOR" ]]; then
-                python_cmd="$cmd"
+                PYTHON_CMD="$cmd"
                 break
             fi
         fi
     done
 
-    if [[ -n "$python_cmd" ]]; then
+    if [[ -n "$PYTHON_CMD" ]]; then
         local full_ver
-        full_ver=$("$python_cmd" --version 2>&1)
+        full_ver=$("$PYTHON_CMD" --version 2>&1)
         ok "Python encontrado: $full_ver"
-        echo "$python_cmd"
         return 0
     fi
 
@@ -100,11 +107,11 @@ find_python() {
     if command -v brew &> /dev/null; then
         info "Instalando Python via Homebrew..."
         brew install python@3.12
-        python_cmd="python3.12"
-        ok "Python instalado: $("$python_cmd" --version)"
-        echo "$python_cmd"
+        PYTHON_CMD="python3.12"
+        ok "Python instalado: $("$PYTHON_CMD" --version 2>&1)"
         return 0
     else
+        echo ""
         fail "Homebrew nao encontrado."
         echo ""
         info "Instala o Homebrew primeiro:"
@@ -113,8 +120,7 @@ find_python() {
         info "Ou baixa o Python direto:"
         echo "    https://python.org/downloads/"
         echo ""
-        info "Depois roda este instalador de novo."
-        exit 1
+        die "Depois de instalar Python, roda este instalador de novo."
     fi
 }
 
@@ -138,8 +144,7 @@ check_git() {
         xcode-select --install 2>/dev/null || true
         echo ""
         warn "Uma janela vai aparecer pedindo pra instalar."
-        info "Aceita e espera terminar, depois roda este instalador de novo."
-        exit 1
+        die "Aceita e espera terminar, depois roda este instalador de novo."
     fi
 }
 
@@ -157,7 +162,9 @@ clone_or_update() {
             rm -rf "$NEXUS_DIR"
         fi
         info "Clonando repositorio..."
-        git clone https://github.com/gtdotwav/nexus.git "$NEXUS_DIR" --quiet
+        if ! git clone https://github.com/gtdotwav/nexus.git "$NEXUS_DIR" --quiet 2>&1; then
+            die "Erro ao clonar. Verifica tua internet."
+        fi
         ok "NEXUS baixado em $NEXUS_DIR"
     fi
 
@@ -167,28 +174,26 @@ clone_or_update() {
 # ─── STEP 4: Install dependencies ────────────────────
 
 install_deps() {
-    local python_cmd="$1"
-
     info "Instalando dependencias (pode demorar 1-2 min)..."
 
     # Upgrade pip
-    "$python_cmd" -m pip install --upgrade pip --quiet 2>/dev/null
+    "$PYTHON_CMD" -m pip install --upgrade pip --quiet 2>/dev/null || true
 
     # Install from pyproject.toml (editable mode)
-    "$python_cmd" -m pip install -e . --quiet 2>/dev/null || {
+    if ! "$PYTHON_CMD" -m pip install -e . --quiet 2>/dev/null; then
         warn "Modo editavel falhou, tentando normal..."
-        "$python_cmd" -m pip install . --quiet 2>/dev/null
-    }
+        "$PYTHON_CMD" -m pip install . --quiet 2>/dev/null || warn "pip install falhou"
+    fi
 
     # macOS-specific: mss for screen capture (cross-platform)
-    "$python_cmd" -m pip install mss --quiet 2>/dev/null || true
+    "$PYTHON_CMD" -m pip install mss --quiet 2>/dev/null || true
 
     # macOS-specific: pyobjc for native window management (optional)
-    "$python_cmd" -m pip install pyobjc-framework-Quartz --quiet 2>/dev/null && {
+    if "$PYTHON_CMD" -m pip install pyobjc-framework-Quartz --quiet 2>/dev/null; then
         ok "Dependencias instaladas (com captura nativa macOS)"
-    } || {
+    else
         ok "Dependencias instaladas (captura via mss)"
-    }
+    fi
 }
 
 # ─── STEP 5: Create config and directories ───────────
@@ -204,9 +209,7 @@ setup_config() {
             cp "$NEXUS_DIR/config/settings.yaml.example" "$NEXUS_DIR/config/settings.yaml"
 
             # Patch config for macOS: change backend from dxcam to mss
-            if command -v sed &> /dev/null; then
-                sed -i '' 's/backend: "dxcam"/backend: "mss"/' "$NEXUS_DIR/config/settings.yaml" 2>/dev/null || true
-            fi
+            sed -i '' 's/backend: "dxcam"/backend: "mss"/' "$NEXUS_DIR/config/settings.yaml" 2>/dev/null || true
 
             ok "Config criado (edite config/settings.yaml com seus hotkeys)"
         fi
@@ -239,7 +242,6 @@ echo "  NEXUS encerrado. Pressione Enter para fechar."
 read -r
 SCRIPT
     chmod +x "$NEXUS_DIR/INICIAR_MAC.command"
-    # Remove quarantine so Gatekeeper won't block the launcher
     xattr -d com.apple.quarantine "$NEXUS_DIR/INICIAR_MAC.command" 2>/dev/null || true
 
     # Create Desktop shortcut
@@ -248,12 +250,11 @@ SCRIPT
         cat > "$desktop/NEXUS Agent.command" << SCRIPT
 #!/bin/bash
 cd "$NEXUS_DIR"
-source "$NEXUS_DIR/INICIAR_MAC.command"
+bash "$NEXUS_DIR/INICIAR_MAC.command"
 SCRIPT
         chmod +x "$desktop/NEXUS Agent.command"
-        # Remove quarantine so double-click works without Gatekeeper warning
         xattr -d com.apple.quarantine "$desktop/NEXUS Agent.command" 2>/dev/null || true
-        ok "Atalho criado na Area de Trabalho (sem bloqueio do Gatekeeper)"
+        ok "Atalho criado na Area de Trabalho"
     fi
 }
 
@@ -281,14 +282,17 @@ show_permissions_guide() {
     echo -e "  ${DIM}do Terminal padrao do macOS.${NC}"
     echo ""
 
-    # Try to open System Preferences
+    # Try to open System Preferences (read from /dev/tty for curl compatibility)
     info "Quer abrir as Configuracoes de Privacidade agora? (s/n)"
-    read -r -n 1 response
-    echo ""
-    if [[ "$response" == "s" || "$response" == "S" ]]; then
-        open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || \
-        open "x-apple.systempreferences:com.apple.preference.security" 2>/dev/null || true
-        info "Janela de Configuracoes aberta"
+    if read -r -n 1 response </dev/tty 2>/dev/null; then
+        echo ""
+        if [[ "$response" == "s" || "$response" == "S" ]]; then
+            open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || \
+            open "x-apple.systempreferences:com.apple.preference.security" 2>/dev/null || true
+            info "Janela de Configuracoes aberta"
+        fi
+    else
+        echo ""
     fi
 }
 
@@ -304,8 +308,7 @@ main() {
     echo ""
 
     echo -e "  ${BOLD}[2/6] Verificando Python...${NC}"
-    local python_cmd
-    python_cmd=$(find_python)
+    find_python
     echo ""
 
     echo -e "  ${BOLD}[3/6] Verificando Git...${NC}"
@@ -317,7 +320,7 @@ main() {
     echo ""
 
     echo -e "  ${BOLD}[5/6] Instalando dependencias...${NC}"
-    install_deps "$python_cmd"
+    install_deps
     echo ""
 
     echo -e "  ${BOLD}[6/6] Configurando...${NC}"
@@ -349,7 +352,7 @@ main() {
 
     echo ""
     info "Pressione Enter para fechar."
-    read -r
+    read -r </dev/tty 2>/dev/null || true
 }
 
 main "$@"
