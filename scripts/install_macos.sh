@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════
-#  NEXUS — macOS Installer v0.5.1
+#  NEXUS — macOS Installer v0.5.2
 #
 #  Fully autonomous installer for macOS (Intel + Apple Silicon).
 #  Auto-installs: Homebrew, Python 3.12, Git, all dependencies.
@@ -616,39 +616,232 @@ step_verify() {
     fi
 }
 
+# ─── Terminal Detection ───────────────────────────
+
+# Detects which terminal app the user is running in.
+# Sets: DETECTED_TERMINAL_NAME, DETECTED_TERMINAL_PATH
+DETECTED_TERMINAL_NAME=""
+DETECTED_TERMINAL_PATH=""
+
+detect_terminal_app() {
+    # Method 1: $TERM_PROGRAM is set by most modern terminals
+    case "${TERM_PROGRAM:-}" in
+        Apple_Terminal)
+            DETECTED_TERMINAL_NAME="Terminal"
+            DETECTED_TERMINAL_PATH="/System/Applications/Utilities/Terminal.app"
+            ;;
+        iTerm.app|iTerm2)
+            DETECTED_TERMINAL_NAME="iTerm"
+            DETECTED_TERMINAL_PATH="/Applications/iTerm.app"
+            ;;
+        WarpTerminal)
+            DETECTED_TERMINAL_NAME="Warp"
+            DETECTED_TERMINAL_PATH="/Applications/Warp.app"
+            ;;
+        vscode)
+            DETECTED_TERMINAL_NAME="Visual Studio Code"
+            DETECTED_TERMINAL_PATH="/Applications/Visual Studio Code.app"
+            ;;
+        Alacritty)
+            DETECTED_TERMINAL_NAME="Alacritty"
+            DETECTED_TERMINAL_PATH="/Applications/Alacritty.app"
+            ;;
+        Hyper)
+            DETECTED_TERMINAL_NAME="Hyper"
+            DETECTED_TERMINAL_PATH="/Applications/Hyper.app"
+            ;;
+        kitty)
+            DETECTED_TERMINAL_NAME="kitty"
+            DETECTED_TERMINAL_PATH="/Applications/kitty.app"
+            ;;
+    esac
+
+    # Method 2: Fallback — check parent process name
+    if [[ -z "$DETECTED_TERMINAL_NAME" ]]; then
+        local parent_name=""
+        parent_name=$(ps -o comm= -p "$PPID" 2>/dev/null | xargs basename 2>/dev/null) || true
+        case "$parent_name" in
+            Terminal)
+                DETECTED_TERMINAL_NAME="Terminal"
+                DETECTED_TERMINAL_PATH="/System/Applications/Utilities/Terminal.app"
+                ;;
+            iTerm2)
+                DETECTED_TERMINAL_NAME="iTerm"
+                DETECTED_TERMINAL_PATH="/Applications/iTerm.app"
+                ;;
+            Warp)
+                DETECTED_TERMINAL_NAME="Warp"
+                DETECTED_TERMINAL_PATH="/Applications/Warp.app"
+                ;;
+            Electron|Code)
+                DETECTED_TERMINAL_NAME="Visual Studio Code"
+                DETECTED_TERMINAL_PATH="/Applications/Visual Studio Code.app"
+                ;;
+        esac
+    fi
+
+    # Method 3: Last resort — assume Terminal.app (macOS default)
+    if [[ -z "$DETECTED_TERMINAL_NAME" ]]; then
+        DETECTED_TERMINAL_NAME="Terminal"
+        DETECTED_TERMINAL_PATH="/System/Applications/Utilities/Terminal.app"
+    fi
+}
+
+# ─── Permission Testing ──────────────────────────
+
+# Tries to trigger macOS permission prompts automatically.
+# On first attempt, macOS shows a "allow?" dialog — the app then
+# appears in the permissions list, so the user just needs to toggle it ON.
+try_trigger_permission_prompts() {
+    local python="$1"
+
+    info "Testando permissoes atuais..."
+    echo ""
+
+    # Test 1: Screen Recording — try to take a screenshot
+    # This triggers the macOS "screen recording" permission dialog
+    local screen_ok=false
+    if screencapture -x -t png /tmp/.nexus_perm_test.png 2>/dev/null; then
+        # If file is >0 bytes, permission is granted (otherwise it's a blank/tiny image)
+        if [[ -s /tmp/.nexus_perm_test.png ]]; then
+            local file_size
+            file_size=$(stat -f%z /tmp/.nexus_perm_test.png 2>/dev/null || echo "0")
+            if [[ "$file_size" -gt 100 ]]; then
+                screen_ok=true
+            fi
+        fi
+        rm -f /tmp/.nexus_perm_test.png 2>/dev/null || true
+    fi
+
+    if [[ "$screen_ok" == "true" ]]; then
+        ok "Gravacao de Tela: ${GREEN}PERMITIDA${NC}"
+    else
+        warn "Gravacao de Tela: ${YELLOW}NAO PERMITIDA${NC} (precisa ativar)"
+    fi
+
+    # Test 2: Accessibility — try to simulate via osascript
+    local access_ok=false
+    if osascript -e 'tell application "System Events" to return name of first process' &>/dev/null; then
+        access_ok=true
+    fi
+
+    if [[ "$access_ok" == "true" ]]; then
+        ok "Acessibilidade: ${GREEN}PERMITIDA${NC}"
+    else
+        warn "Acessibilidade: ${YELLOW}NAO PERMITIDA${NC} (precisa ativar)"
+    fi
+
+    echo ""
+
+    # Return: 0 if both OK, 1 if at least one missing
+    if [[ "$screen_ok" == "true" && "$access_ok" == "true" ]]; then
+        return 0
+    fi
+    return 1
+}
+
 # ─── macOS Permissions Guide ────────────────────────
 
 show_permissions_guide() {
+    detect_terminal_app
+
     echo ""
-    echo -e "  ${YELLOW}╔═══════════════════════════════════════════════╗${NC}"
-    echo -e "  ${YELLOW}║       PERMISSOES IMPORTANTES DO macOS         ║${NC}"
-    echo -e "  ${YELLOW}╚═══════════════════════════════════════════════╝${NC}"
+    echo -e "  ${YELLOW}╔═══════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${YELLOW}║         PERMISSOES IMPORTANTES DO macOS           ║${NC}"
+    echo -e "  ${YELLOW}╚═══════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "  ${BOLD}O NEXUS precisa de 2 permissoes no macOS:${NC}"
-    echo ""
-    echo -e "  ${CYAN}1. Gravacao de Tela (Screen Recording)${NC}"
-    echo -e "     ${DIM}Para capturar a tela do jogo${NC}"
-    echo -e "     Ajustes do Sistema > Privacidade e Seguranca"
-    echo -e "     > Gravacao de Tela > Adiciona o Terminal"
-    echo ""
-    echo -e "  ${CYAN}2. Acessibilidade (Accessibility)${NC}"
-    echo -e "     ${DIM}Para controlar teclado e mouse${NC}"
-    echo -e "     Ajustes do Sistema > Privacidade e Seguranca"
-    echo -e "     > Acessibilidade > Adiciona o Terminal"
-    echo ""
-    echo -e "  ${DIM}Se usar iTerm2, Warp, ou outro terminal, adiciona ele${NC}"
-    echo -e "  ${DIM}ao inves do Terminal padrao do macOS.${NC}"
+    echo -e "  ${BOLD}O NEXUS precisa de 2 permissoes para funcionar:${NC}"
+    echo -e "  ${DIM}(capturar a tela do jogo e controlar teclado/mouse)${NC}"
     echo ""
 
-    # Offer to open System Preferences
+    # Show detected terminal
+    echo -e "  ${CYAN}Seu terminal detectado:${NC} ${BOLD}${DETECTED_TERMINAL_NAME}${NC}"
+    if [[ -n "$DETECTED_TERMINAL_PATH" ]]; then
+        echo -e "  ${DIM}(${DETECTED_TERMINAL_PATH})${NC}"
+    fi
+    echo ""
+
+    # Test current permission status
+    if try_trigger_permission_prompts "$PYTHON_CMD"; then
+        ok "Todas as permissoes ja estao ativas!"
+        echo ""
+        echo -e "  ${GREEN}Nenhuma acao necessaria — pode usar o NEXUS normalmente.${NC}"
+        echo ""
+        return 0
+    fi
+
+    # ── Step-by-step guide ──
+    echo -e "  ${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${BOLD}PASSO A PASSO para ativar as permissoes:${NC}"
+    echo -e "  ${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # PERMISSION 1: Screen Recording
+    echo -e "  ${CYAN}╭─── PERMISSAO 1: Gravacao de Tela ───╮${NC}"
+    echo -e "  ${CYAN}│${NC}  ${DIM}(para capturar a tela do jogo)${NC}"
+    echo -e "  ${CYAN}╰──────────────────────────────────────╯${NC}"
+    echo ""
+    echo -e "  ${BOLD}Passo 1:${NC} Clica no icone da ${BOLD}Maca () ${NC}no canto superior esquerdo"
+    echo -e "  ${BOLD}Passo 2:${NC} Clica em ${BOLD}\"Ajustes do Sistema\"${NC} (ou \"System Settings\")"
+    echo -e "  ${BOLD}Passo 3:${NC} No menu lateral esquerdo, clica em:"
+    echo -e "          ${BOLD}\"Privacidade e Seguranca\"${NC} (ou \"Privacy & Security\")"
+    echo -e "  ${BOLD}Passo 4:${NC} Rola pra baixo ate achar ${BOLD}\"Gravacao de Tela\"${NC}"
+    echo -e "          (ou \"Screen Recording\") e clica nessa opcao"
+    echo -e "  ${BOLD}Passo 5:${NC} Procura ${BOLD}\"${DETECTED_TERMINAL_NAME}\"${NC} na lista"
+    echo -e "          → Se ${BOLD}\"${DETECTED_TERMINAL_NAME}\"${NC} ja aparece: ${GREEN}ativa o botao ao lado${NC} (liga o toggle)"
+    echo -e "          → Se NAO aparece: clica no botao ${BOLD}\"+\"${NC} (no final da lista),"
+    echo -e "            navega ate ${BOLD}${DETECTED_TERMINAL_PATH}${NC}"
+    echo -e "            e seleciona ${BOLD}\"${DETECTED_TERMINAL_NAME}\"${NC}"
+    echo -e "  ${BOLD}Passo 6:${NC} O macOS pode pedir tua ${BOLD}senha do Mac${NC} ou Touch ID — confirma"
+    echo -e "  ${BOLD}Passo 7:${NC} Se pedir para ${BOLD}\"Encerrar e Reabrir\"${NC} o terminal — aceita"
+    echo ""
+
+    # PERMISSION 2: Accessibility
+    echo -e "  ${CYAN}╭─── PERMISSAO 2: Acessibilidade ─────╮${NC}"
+    echo -e "  ${CYAN}│${NC}  ${DIM}(para controlar teclado e mouse)${NC}"
+    echo -e "  ${CYAN}╰──────────────────────────────────────╯${NC}"
+    echo ""
+    echo -e "  ${BOLD}Passo 1:${NC} Ainda em ${BOLD}\"Privacidade e Seguranca\"${NC}, volta pro menu"
+    echo -e "  ${BOLD}Passo 2:${NC} Procura ${BOLD}\"Acessibilidade\"${NC} (ou \"Accessibility\") e clica"
+    echo -e "  ${BOLD}Passo 3:${NC} Procura ${BOLD}\"${DETECTED_TERMINAL_NAME}\"${NC} na lista"
+    echo -e "          → Se aparece: ${GREEN}ativa o botao ao lado${NC} (toggle ON)"
+    echo -e "          → Se NAO aparece: clica no ${BOLD}\"+\"${NC}, navega ate"
+    echo -e "            ${BOLD}${DETECTED_TERMINAL_PATH}${NC}"
+    echo -e "            e seleciona ${BOLD}\"${DETECTED_TERMINAL_NAME}\"${NC}"
+    echo -e "  ${BOLD}Passo 4:${NC} Confirma com ${BOLD}senha${NC} ou Touch ID se pedir"
+    echo ""
+
+    # Quick tips
+    echo -e "  ${YELLOW}━━━ DICAS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${DIM}• Se o app \"${DETECTED_TERMINAL_NAME}\" nao aparece na lista,${NC}"
+    echo -e "  ${DIM}  roda o NEXUS uma vez — o macOS vai pedir permissao automatico${NC}"
+    echo -e "  ${DIM}• Se o botao \"+\" nao funciona, clica no icone de cadeado${NC}"
+    echo -e "  ${DIM}  no canto inferior esquerdo para desbloquear as alteracoes${NC}"
+    echo -e "  ${DIM}• Depois de ativar, pode precisar fechar e reabrir o terminal${NC}"
+    echo -e "  ${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Offer to open BOTH permission panels
     info "Quer abrir as Configuracoes de Privacidade agora? (s/n)"
     local response=""
     if read -r -n 1 response </dev/tty 2>/dev/null; then
         echo ""
         if [[ "$response" == "s" || "$response" == "S" || "$response" == "y" || "$response" == "Y" ]]; then
+            # Open Screen Recording panel
             open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || \
             open "x-apple.systempreferences:com.apple.preference.security" 2>/dev/null || true
-            info "Janela de Configuracoes aberta"
+            ok "Painel de Gravacao de Tela aberto"
+
+            sleep 1
+
+            # Open Accessibility panel in second window
+            open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" 2>/dev/null || true
+            ok "Painel de Acessibilidade aberto"
+
+            echo ""
+            echo -e "  ${GREEN}Duas janelas de Configuracoes foram abertas.${NC}"
+            echo -e "  ${BOLD}Ativa \"${DETECTED_TERMINAL_NAME}\" em AMBAS as listas!${NC}"
+            echo ""
         fi
     else
         echo ""
