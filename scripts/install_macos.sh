@@ -58,7 +58,7 @@ die() {
     exit 1
 }
 
-# ─── STEP 0: Check macOS ──────────────────────────────
+# ─── STEP 1: Check macOS ─────────────────────────────
 
 check_macos() {
     if [[ "$(uname)" != "Darwin" ]]; then
@@ -74,12 +74,71 @@ check_macos() {
     fi
 }
 
-# ─── STEP 1: Check Python ────────────────────────────
+# ─── STEP 2: Install Homebrew if needed ──────────────
+# Homebrew is the standard macOS package manager.
+# On Apple Silicon it installs to /opt/homebrew, on Intel to /usr/local.
+
+install_homebrew() {
+    if command -v brew &> /dev/null; then
+        return 0  # already installed
+    fi
+
+    warn "Homebrew nao encontrado — instalando automaticamente..."
+    info "Homebrew e o gerenciador de pacotes padrao do macOS"
+    info "Ele vai pedir tua senha de administrador do Mac"
+    echo ""
+
+    # Install Homebrew (non-interactive via NONINTERACTIVE env)
+    if NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1; then
+        # After install, Homebrew may not be in PATH yet (especially Apple Silicon)
+        # Apple Silicon: /opt/homebrew/bin
+        # Intel: /usr/local/bin (usually already in PATH)
+        if [[ -f "/opt/homebrew/bin/brew" ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+            # Also add to shell profile so it persists
+            local shell_profile=""
+            if [[ -f "$HOME/.zshrc" ]]; then
+                shell_profile="$HOME/.zshrc"
+            elif [[ -f "$HOME/.bash_profile" ]]; then
+                shell_profile="$HOME/.bash_profile"
+            elif [[ -f "$HOME/.profile" ]]; then
+                shell_profile="$HOME/.profile"
+            fi
+            if [[ -n "$shell_profile" ]]; then
+                if ! grep -q "homebrew" "$shell_profile" 2>/dev/null; then
+                    echo '' >> "$shell_profile"
+                    echo '# Homebrew (added by NEXUS installer)' >> "$shell_profile"
+                    echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$shell_profile"
+                    info "Homebrew adicionado ao $shell_profile"
+                fi
+            fi
+        elif [[ -f "/usr/local/bin/brew" ]]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
+
+        if command -v brew &> /dev/null; then
+            ok "Homebrew instalado com sucesso"
+            return 0
+        else
+            fail "Homebrew instalou mas nao esta no PATH"
+            info "Fecha o terminal, abre de novo, e roda o instalador outra vez"
+            return 1
+        fi
+    else
+        fail "Erro ao instalar Homebrew"
+        info "Tenta instalar manualmente:"
+        echo '    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+        return 1
+    fi
+}
+
+# ─── STEP 3: Find or install Python ──────────────────
 # Sets global PYTHON_CMD (avoids stdout capture bug)
 
 find_python() {
     PYTHON_CMD=""
 
+    # 1) Check if a suitable Python already exists
     for cmd in python3.13 python3.12 python3.11 python3.10 python3; do
         if command -v "$cmd" &> /dev/null; then
             local ver
@@ -101,30 +160,45 @@ find_python() {
         return 0
     fi
 
-    # Python not found — try Homebrew
+    # 2) Python not found — install via Homebrew (installing Homebrew first if needed)
     warn "Python $MIN_PYTHON_MAJOR.$MIN_PYTHON_MINOR+ nao encontrado"
+    echo ""
 
-    if command -v brew &> /dev/null; then
-        info "Instalando Python via Homebrew..."
-        brew install python@3.12
-        PYTHON_CMD="python3.12"
-        ok "Python instalado: $("$PYTHON_CMD" --version 2>&1)"
-        return 0
+    # Ensure Homebrew is available
+    if ! install_homebrew; then
+        die "Nao foi possivel instalar o Homebrew. Instala Python manualmente: https://python.org/downloads/"
+    fi
+
+    # Install Python via Homebrew
+    info "Instalando Python 3.12 via Homebrew (pode demorar 1-2 min)..."
+    if brew install python@3.12 2>&1; then
+        # Homebrew may install python3.12 or just update python3
+        for cmd in python3.12 python3; do
+            if command -v "$cmd" &> /dev/null; then
+                local ver
+                ver=$("$cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+                local major minor
+                major=$(echo "$ver" | cut -d. -f1)
+                minor=$(echo "$ver" | cut -d. -f2)
+                if [[ "$major" -ge "$MIN_PYTHON_MAJOR" && "$minor" -ge "$MIN_PYTHON_MINOR" ]]; then
+                    PYTHON_CMD="$cmd"
+                    break
+                fi
+            fi
+        done
+
+        if [[ -n "$PYTHON_CMD" ]]; then
+            ok "Python instalado: $("$PYTHON_CMD" --version 2>&1)"
+            return 0
+        else
+            die "Python instalou mas nao foi encontrado no PATH. Fecha o terminal, abre de novo, e roda o instalador."
+        fi
     else
-        echo ""
-        fail "Homebrew nao encontrado."
-        echo ""
-        info "Instala o Homebrew primeiro:"
-        echo '    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-        echo ""
-        info "Ou baixa o Python direto:"
-        echo "    https://python.org/downloads/"
-        echo ""
-        die "Depois de instalar Python, roda este instalador de novo."
+        die "Erro ao instalar Python via Homebrew. Instala manualmente: https://python.org/downloads/"
     fi
 }
 
-# ─── STEP 2: Check Git ───────────────────────────────
+# ─── STEP 4: Check Git ───────────────────────────────
 
 check_git() {
     if command -v git &> /dev/null; then
@@ -134,21 +208,46 @@ check_git() {
 
     warn "Git nao encontrado"
 
+    # Try Homebrew first (faster, no GUI popup)
     if command -v brew &> /dev/null; then
         info "Instalando Git via Homebrew..."
-        brew install git
-        ok "Git instalado"
-    else
-        # macOS Command Line Tools includes git
-        info "Instalando Xcode Command Line Tools (inclui Git)..."
-        xcode-select --install 2>/dev/null || true
-        echo ""
-        warn "Uma janela vai aparecer pedindo pra instalar."
-        die "Aceita e espera terminar, depois roda este instalador de novo."
+        if brew install git 2>&1; then
+            ok "Git instalado via Homebrew"
+            return 0
+        fi
     fi
+
+    # Fallback: Xcode Command Line Tools (includes git)
+    info "Instalando Xcode Command Line Tools (inclui Git)..."
+    info "Uma janela pode aparecer pedindo pra instalar — aceita e espera."
+    xcode-select --install 2>/dev/null || true
+
+    # Wait for installation to complete (polls every 5s, max 10 min)
+    info "Esperando instalacao terminar..."
+    local waited=0
+    while [[ $waited -lt 600 ]]; do
+        if command -v git &> /dev/null; then
+            ok "Git instalado via Xcode Command Line Tools"
+            return 0
+        fi
+        sleep 5
+        waited=$((waited + 5))
+        # Show progress every 30s
+        if [[ $((waited % 30)) -eq 0 ]]; then
+            info "Ainda instalando... ($waited s)"
+        fi
+    done
+
+    # Last chance check
+    if command -v git &> /dev/null; then
+        ok "Git instalado"
+        return 0
+    fi
+
+    die "Git nao foi instalado apos 10 min. Instala manualmente: xcode-select --install"
 }
 
-# ─── STEP 3: Clone or update repo ────────────────────
+# ─── STEP 5: Clone or update repo ────────────────────
 
 clone_or_update() {
     if [[ -d "$NEXUS_DIR/.git" ]]; then
@@ -171,7 +270,7 @@ clone_or_update() {
     cd "$NEXUS_DIR"
 }
 
-# ─── STEP 4: Install dependencies ────────────────────
+# ─── STEP 6: Install dependencies ────────────────────
 
 install_deps() {
     info "Instalando dependencias (pode demorar 1-2 min)..."
@@ -196,7 +295,7 @@ install_deps() {
     fi
 }
 
-# ─── STEP 5: Create config and directories ───────────
+# ─── STEP 7a: Create config and directories ──────────
 
 setup_config() {
     # Create data directory
@@ -218,7 +317,7 @@ setup_config() {
     fi
 }
 
-# ─── STEP 6: Create launcher shortcut ────────────────
+# ─── STEP 7b: Create launcher shortcut ───────────────
 
 create_shortcuts() {
     # Create INICIAR_MAC.command in NEXUS directory
@@ -303,27 +402,35 @@ show_permissions_guide() {
 main() {
     banner
 
-    echo -e "  ${BOLD}[1/6] Verificando macOS...${NC}"
+    echo -e "  ${BOLD}[1/7] Verificando macOS...${NC}"
     check_macos
     echo ""
 
-    echo -e "  ${BOLD}[2/6] Verificando Python...${NC}"
+    echo -e "  ${BOLD}[2/7] Verificando Homebrew...${NC}"
+    if command -v brew &> /dev/null; then
+        ok "Homebrew encontrado"
+    else
+        install_homebrew || die "Homebrew necessario. Instala manualmente e roda de novo."
+    fi
+    echo ""
+
+    echo -e "  ${BOLD}[3/7] Verificando Python...${NC}"
     find_python
     echo ""
 
-    echo -e "  ${BOLD}[3/6] Verificando Git...${NC}"
+    echo -e "  ${BOLD}[4/7] Verificando Git...${NC}"
     check_git
     echo ""
 
-    echo -e "  ${BOLD}[4/6] Baixando NEXUS...${NC}"
+    echo -e "  ${BOLD}[5/7] Baixando NEXUS...${NC}"
     clone_or_update
     echo ""
 
-    echo -e "  ${BOLD}[5/6] Instalando dependencias...${NC}"
+    echo -e "  ${BOLD}[6/7] Instalando dependencias...${NC}"
     install_deps
     echo ""
 
-    echo -e "  ${BOLD}[6/6] Configurando...${NC}"
+    echo -e "  ${BOLD}[7/7] Configurando...${NC}"
     setup_config
     create_shortcuts
     echo ""
