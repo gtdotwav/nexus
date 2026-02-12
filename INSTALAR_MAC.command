@@ -2,9 +2,20 @@
 # ═══════════════════════════════════════════════════════
 #  NEXUS — Instalador One-Click para macOS
 #
-#  Double-click neste arquivo no Finder para instalar.
-#  Ele vai baixar o NEXUS e configurar tudo automaticamente.
+#  COMO USAR:
+#    Opcao 1: Clique DIREITO neste arquivo → "Abrir"
+#             (necessario na primeira vez por causa do Gatekeeper)
+#
+#    Opcao 2: Abra o Terminal e cole:
+#             bash -c "$(curl -fsSL https://raw.githubusercontent.com/gtdotwav/nexus/main/scripts/install_macos.sh)"
+#
+#  Se o macOS bloquear com "nao pode verificar o desenvolvedor":
+#    → Clique direito → Abrir (ou Control+Click → Abrir)
+#    → Vai em Ajustes do Sistema → Privacidade e Seguranca → "Abrir Mesmo Assim"
 # ═══════════════════════════════════════════════════════
+
+# Remove quarantine flag from self (prevents Gatekeeper on next run)
+xattr -d com.apple.quarantine "$0" 2>/dev/null || true
 
 # Move to the script's directory (or home if from Downloads)
 cd "$HOME"

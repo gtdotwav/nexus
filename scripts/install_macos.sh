@@ -9,6 +9,9 @@
 #  Usage:
 #    bash scripts/install_macos.sh
 #    -- or double-click INSTALAR_MAC.command --
+#
+#  One-liner (bypasses Gatekeeper):
+#    bash -c "$(curl -fsSL https://raw.githubusercontent.com/gtdotwav/nexus/main/scripts/install_macos.sh)"
 # ═══════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -236,6 +239,8 @@ echo "  NEXUS encerrado. Pressione Enter para fechar."
 read -r
 SCRIPT
     chmod +x "$NEXUS_DIR/INICIAR_MAC.command"
+    # Remove quarantine so Gatekeeper won't block the launcher
+    xattr -d com.apple.quarantine "$NEXUS_DIR/INICIAR_MAC.command" 2>/dev/null || true
 
     # Create Desktop shortcut
     local desktop="$HOME/Desktop"
@@ -246,7 +251,9 @@ cd "$NEXUS_DIR"
 source "$NEXUS_DIR/INICIAR_MAC.command"
 SCRIPT
         chmod +x "$desktop/NEXUS Agent.command"
-        ok "Atalho criado na Area de Trabalho"
+        # Remove quarantine so double-click works without Gatekeeper warning
+        xattr -d com.apple.quarantine "$desktop/NEXUS Agent.command" 2>/dev/null || true
+        ok "Atalho criado na Area de Trabalho (sem bloqueio do Gatekeeper)"
     fi
 }
 
