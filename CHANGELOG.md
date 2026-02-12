@@ -7,6 +7,38 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ---
 
 
+## [0.4.0] - 2026-02-12
+
+### Removed (Stack Cleanup)
+
+- **perception/game_reader.py**: Deleted legacy v1 game reader (OCR-based). Use game_reader_v2.py
+- **perception/spatial_memory.py**: Deleted legacy v1 spatial memory (JSON-based). Use spatial_memory_v2.py
+- **perception/__init__.py**: Rewritten to export v2 as canonical names (GameReader, SpatialMemory)
+
+### Fixed (Critical)
+
+- **brain/strategic.py — cache NEVER worked**: Both state-diff hash and response cache used Python's `hash()` which is randomized per session via PYTHONHASHSEED. Every API call was a cache miss. Replaced with `hashlib.md5` and `hashlib.sha256` for deterministic hashing. This alone saves ~30-50% of API calls
+- **brain/strategic.py — _build_context() crash**: Directly accessed `snapshot["character"]`, etc. which crashes on missing keys. Now uses safe `.get()` everywhere
+- **brain/strategic.py — null response.content**: `analyze_for_skill_creation()` and `analyze_skill_performance()` crashed on empty API responses
+- **brain/reactive.py — keyboard race condition**: Multiple async tasks could interleave press/release calls on shared pynput keyboard singleton, leaving keys stuck. Added `asyncio.Lock` to all keyboard operations
+- **brain/reactive.py — _press_diagonal() unprotected**: Same race condition. Now uses the shared input lock
+- **brain/reactive.py — null keyboard/mouse**: `press_key()` and `click()` didn't check if `_keyboard`/`_mouse` were actually initialized. Added null guards
+- **brain/reasoning.py — Inference timestamps all identical**: `default_factory=time.time` evaluates once at class definition, not per-instance. Fixed to `lambda: time.time()`
+- **brain/reasoning.py — _analyze_topology() phantom cells**: `floor.get(x, y)` auto-creates empty cells, inflating walkability analysis. Changed to `floor.cells.get(key)` with None check
+- **core/recovery.py — duplicate _last_recovery_end**: Variable defined twice (lines 80-81). Removed duplicate
+- **core/loops/metrics.py — AttributeError crash**: Accessed `reasoning_engine.current_profile.recommended_action` without null check. Also accessed `strategic_brain._skipped_calls` (private)
+- **dashboard/server.py — navigation crash**: `len(agent.navigator.active_route)` crashed when route is None
+- **dashboard/server.py — private attribute access**: Replaced `._calls` with public properties
+- **actions/explorer.py — diagonal movement broken**: `_move()` mapped diagonal directions to single keys ("ne" → "up"). Now presses both keys simultaneously
+
+### Changed
+
+- **Version management**: Single source of truth from `pyproject.toml` via `importlib.metadata`. Removed hardcoded VERSION in nexus_cli.py
+- **CI pipeline**: Dependencies installed via `pip install -e ".[dev]"` instead of hardcoded pip install list
+- **pyproject.toml**: Added `[tool.setuptools.package-data]` for dashboard HTML inclusion in distribution
+
+---
+
 ## [0.3.1] - 2026-02-12
 
 ### Fixed

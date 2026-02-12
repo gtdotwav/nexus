@@ -43,7 +43,7 @@ class Inference:
     description: str
     action_hint: str        # "retreat", "push", "explore", "avoid", "investigate"
     data: dict = field(default_factory=dict)
-    timestamp: float = field(default_factory=time.time)
+    timestamp: float = field(default_factory=lambda: time.time())
 
 
 @dataclass
@@ -295,7 +295,10 @@ class ReasoningEngine:
             for dy in range(-2, 3):
                 if dx == 0 and dy == 0:
                     continue
-                cell = floor.get(pos.x + dx, pos.y + dy)
+                key = (pos.x + dx, pos.y + dy)
+                cell = floor.cells.get(key)
+                if cell is None:
+                    continue  # Unexplored — don't count
                 ring = 1 if abs(dx) <= 1 and abs(dy) <= 1 else 2
 
                 if ring == 1:

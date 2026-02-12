@@ -451,15 +451,31 @@ class Explorer:
             )
 
     async def _move(self, direction: str):
-        """Move in a direction using the input handler."""
-        from pynput.keyboard import Key, Controller
-        key_map = {
-            "n": "up", "s": "down", "e": "right", "w": "left",
-            "ne": "up", "nw": "up", "se": "down", "sw": "down",
+        """Move in a direction using the input handler.
+        Diagonal moves press two keys simultaneously via reactive brain's method."""
+        cardinal_map = {
+            "n": ["up"], "s": ["down"], "e": ["right"], "w": ["left"],
+            "ne": ["up", "right"], "nw": ["up", "left"],
+            "se": ["down", "right"], "sw": ["down", "left"],
         }
-        key = key_map.get(direction, "")
-        if key:
-            await self.navigator.input.press_key(key)
+        keys = cardinal_map.get(direction, [])
+        if len(keys) == 1:
+            await self.navigator.input.press_key(keys[0])
+        elif len(keys) == 2:
+            # Diagonal: press both keys together
+            inp = self.navigator.input
+            if inp._pynput_available and inp._keyboard:
+                import random
+                k1 = inp._key_map.get(keys[0])
+                k2 = inp._key_map.get(keys[1])
+                if k1 and k2:
+                    hold_min, hold_max = inp.config["key_hold_range"]
+                    hold_time = random.uniform(hold_min, hold_max)
+                    inp._keyboard.press(k1)
+                    inp._keyboard.press(k2)
+                    await asyncio.sleep(hold_time)
+                    inp._keyboard.release(k2)
+                    inp._keyboard.release(k1)
 
     def _delta_to_direction(self, dx: int, dy: int) -> str:
         """Convert dx/dy delta to compass direction."""

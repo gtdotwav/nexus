@@ -39,7 +39,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 console = Console()
 
-VERSION = "0.3.1"
+try:
+    from importlib.metadata import version as _pkg_version
+    VERSION = _pkg_version("nexus-agent")
+except Exception:
+    VERSION = "0.4.0"  # Fallback when not installed as package
 NEXUS_HOME = Path.home() / ".nexus"
 PID_FILE = NEXUS_HOME / "nexus.pid"
 CONFIG_FILE = NEXUS_HOME / "config.yaml"

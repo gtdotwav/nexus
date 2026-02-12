@@ -45,21 +45,19 @@ core/
 └── recovery.py
 
 brain/
-├── reactive.py               # ReactiveBrain + HumanizedInput
-├── strategic.py               # StrategicBrain + Claude API
+├── reactive.py               # ReactiveBrain + HumanizedInput (asyncio.Lock no keyboard)
+├── strategic.py               # StrategicBrain + Claude API (hash determinístico no cache)
 └── reasoning.py               # ReasoningEngine
 
 perception/
 ├── screen_capture.py
-├── game_reader_v2.py          # Pixel-based (<2ms) — USAR ESTE
-├── game_reader.py             # Legacy (EasyOCR) — NÃO USAR
-├── spatial_memory_v2.py       # SQLite WAL — USAR ESTE
-└── spatial_memory.py          # Legacy JSON — NÃO USAR
+├── game_reader_v2.py          # Pixel-based (<2ms) — CANÔNICO
+└── spatial_memory_v2.py       # SQLite WAL — CANÔNICO
 
 actions/
 ├── navigator.py               # A* pathfinding
 ├── looting.py                 # Loot engine
-├── explorer.py                # Map exploration
+├── explorer.py                # Map exploration (diagonais corrigidas)
 ├── supply_manager.py          # Supply tracking
 └── behaviors.py               # Behavior patterns
 
@@ -73,9 +71,12 @@ games/
 └── tibia/adapter.py
 
 dashboard/
-├── server.py                  # WebSocket server
+├── server.py                  # WebSocket server (null-safe agora)
 └── app.html                   # Real-time dashboard
 ```
+
+**NOTA**: `perception/game_reader.py` e `perception/spatial_memory.py` foram REMOVIDOS em v0.4.0.
+`perception/__init__.py` exporta v2 como nomes canônicos (`GameReader`, `SpatialMemory`).
 
 ## Ponto Crítico: GameState
 
@@ -85,7 +86,7 @@ dashboard/
 actions/behaviors.py, actions/explorer.py, actions/looting.py,
 actions/navigator.py, actions/supply_manager.py,
 brain/reactive.py, brain/reasoning.py,
-perception/game_reader.py, perception/game_reader_v2.py,
+perception/game_reader_v2.py,
 core/agent.py, core/recovery.py,
 skills/engine.py, games/tibia/adapter.py
 ```
@@ -127,6 +128,9 @@ skills/engine.py, games/tibia/adapter.py
 - Docstring em toda classe e método público
 - Nomes em inglês, commits em inglês
 - `from __future__ import annotations` em todo arquivo
+- **I/O em funções async**: SEMPRE usar `aiofiles`, NUNCA `open()` bloqueante
+- **Imports circulares**: `from __future__ import annotations` + `if TYPE_CHECKING:`
+- **Keyboard**: SEMPRE usar `async with self._input_lock:` ao acessar pynput
 
 ## Padrão de Commits
 
@@ -145,74 +149,83 @@ chore: manutenção
 - NÃO criar imports circulares
 - NÃO usar `print()` — sempre `structlog`
 - NÃO commitar `config/settings.yaml` (tem API keys)
-- NÃO usar `game_reader.py` ou `spatial_memory.py` (legados, use v2)
 - NÃO fazer `git push --force`
 - NÃO editar o mesmo arquivo que outro dev está trabalhando
+- NÃO usar `hash()` para cache keys (é randomizado por sessão) — usar `hashlib`
 
 ## Stack Técnica
 
 - Perception: dxcam + OpenCV + pixel analysis (<2ms/frame)
-- Reactive Brain: asyncio, 40 ticks/s, pynput singletons
-- Strategic Brain: Claude API (Anthropic), state-diff skip (~30% savings)
+- Reactive Brain: asyncio, 40 ticks/s, pynput singletons com asyncio.Lock
+- Strategic Brain: Claude API (Anthropic), state-diff skip com hash determinístico
 - Spatial Memory: SQLite WAL mode, batched writes
-- Event System: Typed async EventBus, thread-safe emission
-- Input: pynput, Bézier curves, gaussian noise, anti-detection
+- Event System: Typed async EventBus, `run_coroutine_threadsafe` para thread-safety
+- Input: pynput, gaussian noise, anti-detection, asyncio.Lock
 - Dashboard: aiohttp + WebSocket
 - CLI: Click + Rich
+- Version: Single source of truth em `pyproject.toml` via `importlib.metadata`
 
 ## Versão Atual
 
-**v0.3.1** — Deep Analysis Bugfix
+**v0.4.0** — Stack Audit + Purge
 
-## Últimas Mudanças (v0.3.1)
+## Últimas Mudanças (v0.4.0)
 
-- `core/consciousness.py` — Fix: 3 MAIS pontos de sync I/O que tinham escapado (session count + reflect)
-- `core/event_bus.py` — Fix: `emit_threadsafe()` usava `ensure_future` errado → `run_coroutine_threadsafe()`
-- `brain/reasoning.py` — Fix: crash ao acessar `floors[z]` sem verificar existência + null check em `get_reasoning_context()`
-- `brain/strategic.py` — Fix: crash se API retorna response.content vazio
-- `core/foundry.py` — Fix: 2 pontos de sync I/O em async (initialize + save_history)
-- `core/recovery.py` — Fix: `_last_recovery_end` não inicializado (AttributeError na primeira morte)
-- `core/state/game_state.py` — Fix: `_notify()` agora copia lista antes de iterar (thread safety)
-- `core/loops/metrics.py` — Fix: crash se `navigator.active_route` é None
-- `main.py` — Consolidado: era 174 linhas duplicando nexus_cli.py. Agora redirect fino
-- `pyproject.toml` — Adicionado pydantic + sqlite-utils que faltavam nas deps core
-- Versões alinhadas: main.py, nexus_cli.py, settings.yaml agora todos 0.3.1
+### Remoções (stack cleanup)
+- `perception/game_reader.py` — REMOVIDO (legacy v1, ninguém usa)
+- `perception/spatial_memory.py` — REMOVIDO (legacy v1, substituído por v2 SQLite)
+- `perception/__init__.py` — Reescrito: exporta v2 como nomes canônicos
+
+### Fixes Críticos
+- `brain/strategic.py` — Cache key usava `hash()` (randomizado por sessão = cache NUNCA acertava) → `hashlib.sha256`
+- `brain/strategic.py` — State-diff hash usava `hash()` também → `hashlib.md5` determinístico
+- `brain/strategic.py` — `_build_context()` crashava se snapshot tivesse campos faltando → safe `.get()`
+- `brain/strategic.py` — `analyze_for_skill_creation()` e `analyze_skill_performance()` sem null check em response.content
+- `brain/reactive.py` — Keyboard race condition: múltiplas tasks async acessavam pynput sem lock → `asyncio.Lock`
+- `brain/reactive.py` — `_press_diagonal()` também sem lock → adicionado
+- `brain/reactive.py` — `press_key()` / `click()` sem null check em `_keyboard` / `_mouse`
+- `brain/reasoning.py` — `Inference.timestamp` usava `default_factory=time.time` (errado) → `lambda: time.time()`
+- `brain/reasoning.py` — `_analyze_topology()` acessava `floor.get()` que cria cells vazias → `floor.cells.get()` com None check
+- `core/recovery.py` — `_last_recovery_end` definido 2x (duplicata) → removido duplicado
+- `core/loops/metrics.py` — Acessava `agent.strategic_brain._skipped_calls` (privado) → public property
+- `core/loops/metrics.py` — `reasoning_engine.current_profile.recommended_action` sem null check → guard
+- `dashboard/server.py` — `agent.navigator.active_route` sem null guard → `or []`
+- `dashboard/server.py` — Acessava `._calls` (privado) → public properties `calls`, `skipped_calls`
+- `actions/explorer.py` — `_move()` mapeava diagonais para uma tecla só → 2 teclas simultâneas
+
+### Infraestrutura
+- CI: Instala dependências via `pip install -e ".[dev]"` (não hardcoded)
+- CI: Removidos imports de game_reader.py e spatial_memory.py (deletados)
+- `pyproject.toml` — `[tool.setuptools.package-data]` para dashboard HTML
+- Version single source of truth: `pyproject.toml` via `importlib.metadata`
+- Versão 0.4.0 em todos os pontos
+
+## Mudanças Anteriores (v0.3.1)
+
+- 16 arquivos corrigidos — deep analysis bugfix sweep
+- consciousness.py sync I/O, event_bus threadsafe, foundry async, recovery init
 
 ## Mudanças Anteriores (v0.3.0)
 
-- `core/event_bus.py` — Fix: errors in global handlers were silently swallowed. Now properly logged
-- `core/consciousness.py` — Fix: 7 points of sync file I/O blocking the event loop. Now uses aiofiles
-- `brain/strategic.py` — Fix: API calls without timeout/retry. Now has 15s timeout + 3x exponential backoff
-- `core/agent.py` — Fix: loop crashes were silent. Now monitored with auto-restart (max 3x per loop)
-- `core/loops/strategic.py` — Fix: single bad API decision could crash all decision application. Now individually wrapped
-- `core/loops/__init__.py` — New: warns at startup if .py loop files exist but aren't registered in ALL_LOOPS
-- `core/loops/reasoning.py`, `metrics.py` — Intervals now configurable via settings.yaml
-- `core/loops/TEMPLATE.py` — Moved to `docs/LOOP_TEMPLATE.py` (was polluting production code)
-- Legacy files `perception/game_reader.py` and `perception/spatial_memory.py` marked DEPRECATED
-- CI: added ruff + mypy (warning-only)
-- `aiofiles` added to dependencies
-
-## Mudanças Anteriores (v0.2.0)
-
-- `core/state/` — Splitado em package (enums.py, models.py, game_state.py)
-- `core/loops/` — Loops extraídos de agent.py para arquivos individuais
-- `CLAUDE.md` — Contexto compartilhado entre 3 Claudes
-- GitHub Actions CI — Syntax + imports + secrets check
-- Git hooks — Pre-push e pre-commit protections
+- Resilience overhaul: retry/timeout/monitored loops/decision validation/aiofiles
 
 ## Known Issues & Limitations
 
 ### O que NÃO funciona ainda
-- **Config validation**: Não existe validação do settings.yaml. Se faltam campos, crash sem mensagem clara
-- **Testes**: Zero testes unitários/integração. Qualquer refatoração é "reza e push"
-- **Dashboard**: Parcialmente implementado. Precisa de investigação do estado real
-- **Humanização do mouse**: Usa noise gaussiano simples. Falta curvas Bézier para movimentos mais humanos
-- **Creature database**: Tiers de criaturas inferidos pelo reasoning engine, não existe DB estático
-- **Skill YAML schema**: Skills não são validadas antes de carregar. YAML inválido = crash
-- **Anti-detection**: Nível básico. Análise comportamental mais avançada não implementada
+- **Config validation**: Não existe validação do settings.yaml (pydantic schema pendente)
+- **Testes**: Zero testes unitários/integração
+- **Dashboard**: Parcialmente implementado
+- **Humanização do mouse**: Falta curvas Bézier
+- **Creature database**: Tiers inferidos pelo reasoning engine, não existe DB estático
+- **Skill YAML schema**: Skills não são validadas antes de carregar
+- **Consciousness god object**: 800+ linhas, deveria ser quebrado em MemoryStore/EmotionTracker/GoalManager
+- **EventBus handlers sequenciais**: Um handler lento bloqueia todos os outros
+- **Foundry experiment threshold**: Score ≥ 2 de max 7 é muito baixo (28%)
+- **Navigator hunt patrol**: Random walk puro, deveria usar spatial memory
+- **Looting**: `modifiers=["shift"]` no click() não implementado
+- **No circuit breaker**: Se Claude API cai, strategic brain retenta forever
 
 ### Pontos de atenção para devs
-- `perception/game_reader.py` e `spatial_memory.py` são LEGACY. Use as versões v2
 - Os loops têm auto-restart (max 3x). Se um loop morre 3 vezes, ele fica morto até restart do agent
-- Strategic brain retorna `None` (manter estado) em caso de falha total da API — o agente não para
-- EventBus `_dispatch_event()` é chamado via `call_soon_threadsafe` — handlers DEVEM ser thread-safe
+- Strategic brain retorna `None` (manter estado) em caso de falha total da API
+- Keyboard operations protegidas por `asyncio.Lock` — respeitar o padrão

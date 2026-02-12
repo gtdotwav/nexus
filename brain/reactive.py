@@ -51,6 +51,7 @@ class HumanizedInput:
         self._mouse = None
         self._key_map = {}
         self._pynput_available = False
+        self._input_lock = asyncio.Lock()  # Prevent key press/release interleaving
 
         try:
             from pynput.keyboard import Controller as KBController, Key
@@ -79,7 +80,7 @@ class HumanizedInput:
 
     async def press_key(self, key: str, hold_range: tuple = None):
         """Press a keyboard key with human-like timing."""
-        if not self._pynput_available:
+        if not self._pynput_available or not self._keyboard:
             return
 
         if self.enabled:
@@ -96,15 +97,16 @@ class HumanizedInput:
 
         hold_time = random.uniform(hold_min, hold_max)
 
-        self._keyboard.press(actual_key)
-        await asyncio.sleep(hold_time)
-        self._keyboard.release(actual_key)
+        async with self._input_lock:
+            self._keyboard.press(actual_key)
+            await asyncio.sleep(hold_time)
+            self._keyboard.release(actual_key)
 
         self._last_action_time = time.time()
 
     async def click(self, x: int, y: int, button: str = "left"):
         """Click at coordinates with human-like mouse movement."""
-        if not self._pynput_available:
+        if not self._pynput_available or not self._mouse:
             return
 
         if self.enabled:
@@ -461,7 +463,7 @@ class ReactiveBrain:
     async def _press_diagonal(self, key1: str, key2: str):
         """Press two keys simultaneously for diagonal movement.
         Uses the singleton keyboard controller from HumanizedInput."""
-        if not self.input._pynput_available:
+        if not self.input._pynput_available or not self.input._keyboard:
             return
 
         k1 = self.input._key_map.get(key1)
@@ -470,11 +472,12 @@ class ReactiveBrain:
             hold_min, hold_max = self.input.config["key_hold_range"]
             hold_time = random.uniform(hold_min, hold_max)
 
-            self.input._keyboard.press(k1)
-            self.input._keyboard.press(k2)
-            await asyncio.sleep(hold_time)
-            self.input._keyboard.release(k2)
-            self.input._keyboard.release(k1)
+            async with self.input._input_lock:
+                self.input._keyboard.press(k1)
+                self.input._keyboard.press(k2)
+                await asyncio.sleep(hold_time)
+                self.input._keyboard.release(k2)
+                self.input._keyboard.release(k1)
 
     # ─── Spell & Potion Execution ─────────────────────────
 

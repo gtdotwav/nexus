@@ -20,9 +20,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install dependencies (from pyproject.toml)
         run: |
-          pip install pyyaml structlog anthropic pynput aiohttp click rich numpy opencv-python-headless Pillow aiohttp-cors aiofiles ruff mypy
+          pip install -e ".[dev]" --quiet
+          pip install opencv-python-headless --quiet
 
       - name: Check syntax (all .py files)
         run: |
@@ -71,9 +72,7 @@ jobs:
               'brain.strategic',
               'brain.reasoning',
               'perception.screen_capture',
-              'perception.game_reader',
               'perception.game_reader_v2',
-              'perception.spatial_memory',
               'perception.spatial_memory_v2',
               'actions.navigator',
               'actions.looting',
@@ -103,11 +102,9 @@ jobs:
         run: |
           python -c "
           import re
-          # Read version from pyproject.toml
           with open('pyproject.toml') as f:
               match = re.search(r'version\s*=\s*\"([^\"]+)\"', f.read())
               version = match.group(1) if match else 'NOT FOUND'
-          # Read version from CHANGELOG
           with open('CHANGELOG.md') as f:
               match = re.search(r'\[(\d+\.\d+\.\d+)\]', f.read())
               changelog_version = match.group(1) if match else 'NOT FOUND'

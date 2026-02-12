@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-agent"
-version = "0.3.1"
+version = "0.4.0"
 description = "NEXUS — Autonomous Gaming Agent with Dual-Brain AI Architecture"
 readme = "README.md"
 license = {text = "MIT"}
@@ -79,6 +79,10 @@ include = [
     "dashboard*",
     "games*",
 ]
+
+[tool.setuptools.package-data]
+dashboard = ["*.html"]
+config = ["*.yaml", "*.yaml.example"]
 
 [tool.ruff]
 target-version = "py311"

@@ -29,6 +29,11 @@ async def run(agent: NexusAgent) -> None:
                 agent.state.session.xp_per_hour = agent.state.session.xp_gained / elapsed_hours
                 agent.state.session.profit_per_hour = agent.state.session.loot_value / elapsed_hours
 
+            # Build metrics dict safely — avoid crashing on None attributes
+            reasoning_action = "unknown"
+            if agent.reasoning_engine and agent.reasoning_engine.current_profile:
+                reasoning_action = agent.reasoning_engine.current_profile.recommended_action
+
             log.info(
                 "metrics.update",
                 xp_hr=round(agent.state.session.xp_per_hour),
@@ -42,13 +47,14 @@ async def run(agent: NexusAgent) -> None:
                 depot_runs=agent.supply_manager.depot_runs,
                 map_cells=agent.spatial_memory.total_cells_explored,
                 map_floors=len(agent.spatial_memory.floors),
-                reasoning=agent.reasoning_engine.current_profile.recommended_action,
+                reasoning=reasoning_action,
                 exploring=agent.explorer.active,
                 perception_ms=agent.game_reader.avg_frame_ms,
                 event_bus=agent.event_bus.stats,
-                strategic_skipped=agent.strategic_brain._skipped_calls,
+                strategic_calls=agent.strategic_brain.calls,
+                strategic_skipped=agent.strategic_brain.skipped_calls,
             )
         except Exception as e:
-            log.error("metrics.error", error=str(e))
+            log.error("metrics.error", error=str(e), type=type(e).__name__)
 
         await asyncio.sleep(cycle_time)

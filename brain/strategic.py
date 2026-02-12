@@ -247,7 +247,8 @@ class StrategicBrain:
             len(combat.get("nearby_players", [])),
             snapshot.get("active_skill", ""),
         )
-        context_hash = hash(diff_key)
+        import hashlib as _hl
+        context_hash = int(_hl.md5(str(diff_key).encode()).hexdigest()[:16], 16)
 
         if context_hash == self._last_context_hash:
             # State hasn't materially changed — skip API call
@@ -258,7 +259,8 @@ class StrategicBrain:
         self._last_meaningful_change = time.time()
 
         # Check cache (avoid identical consecutive calls)
-        cache_key = context[:200]
+        import hashlib as _hl2
+        cache_key = _hl2.sha256(context.encode()).hexdigest()[:32]
         if cache_key in self._cache:
             cached_time, cached_result = self._cache[cache_key]
             if time.time() - cached_time < self._cache_ttl:
@@ -330,17 +332,18 @@ class StrategicBrain:
         Build a token-efficient context message.
         Combines game state + consciousness context.
         """
-        char = snapshot["character"]
-        combat = snapshot["combat"]
-        supplies = snapshot["supplies"]
-        session = snapshot["session"]
+        char = snapshot.get("character", {})
+        combat = snapshot.get("combat", {})
+        supplies = snapshot.get("supplies", {})
+        session = snapshot.get("session", {})
 
+        pos = char.get("position", {})
         lines = [
             f"[GAME STATE @ {time.strftime('%H:%M:%S')}]",
-            f"HP:{char['hp_percent']}% Mana:{char['mana_percent']}% "
-            f"Pos:({char['position']['x']},{char['position']['y']},{char['position']['z']})",
-            f"Mode:{combat['mode']} Threat:{combat['threat_level']} "
-            f"Target:{combat['current_target'] or '-'}",
+            f"HP:{char.get('hp_percent', 0)}% Mana:{char.get('mana_percent', 0)}% "
+            f"Pos:({pos.get('x', 0)},{pos.get('y', 0)},{pos.get('z', 7)})",
+            f"Mode:{combat.get('mode', '?')} Threat:{combat.get('threat_level', '?')} "
+            f"Target:{combat.get('current_target') or '-'}",
         ]
 
         # Battle list (compact)
@@ -354,13 +357,13 @@ class StrategicBrain:
             lines.append(f"Players: {pl}")
 
         # Supplies
-        lines.append(f"Pots: HP={supplies['health_potions']} Mana={supplies['mana_potions']}")
+        lines.append(f"Pots: HP={supplies.get('health_potions', 0)} Mana={supplies.get('mana_potions', 0)}")
 
         # Session
         lines.append(
-            f"Session: {session['duration_minutes']:.0f}min XP/hr:{session['xp_per_hour']:.0f} "
-            f"Gold/hr:{session['profit_per_hour']:.0f} Deaths:{session['deaths']} "
-            f"Kills:{session.get('kills',0)} Close:{session['close_calls']}"
+            f"Session: {session.get('duration_minutes', 0):.0f}min XP/hr:{session.get('xp_per_hour', 0):.0f} "
+            f"Gold/hr:{session.get('profit_per_hour', 0):.0f} Deaths:{session.get('deaths', 0)} "
+            f"Kills:{session.get('kills', 0)} Close:{session.get('close_calls', 0)}"
         )
 
         # Skill + waypoint
@@ -449,7 +452,7 @@ class StrategicBrain:
             temperature=0.2,
             messages=[{"role": "user", "content": prompt}],
         )
-        if response is None:
+        if response is None or not response.content:
             log.error("strategic.skill_creation_failed")
             return None
         return {"yaml_content": response.content[0].text}
@@ -471,10 +474,18 @@ Return JSON with:
             temperature=0.2,
             messages=[{"role": "user", "content": prompt}],
         )
-        if response is None:
+        if response is None or not response.content:
             log.error("strategic.analysis_failed")
             return None
         return self._parse_json(response.content[0].text)
+
+    @property
+    def calls(self) -> int:
+        return self._calls
+
+    @property
+    def skipped_calls(self) -> int:
+        return self._skipped_calls
 
     @property
     def avg_latency_ms(self) -> float:

@@ -325,12 +325,13 @@ class DashboardServer:
                 "total": agent.recovery.total_recoveries,
             },
             "navigation": {
-                "waypoint": f"{agent.navigator.current_index}/{len(agent.navigator.active_route)}",
+                "waypoint": f"{agent.navigator.current_index}/{len(agent.navigator.active_route or [])}",
             },
             "strategic_brain": {
-                "calls": agent.strategic_brain._calls,
+                "calls": agent.strategic_brain.calls,
                 "avg_latency_ms": round(agent.strategic_brain.avg_latency_ms),
                 "error_rate": round(agent.strategic_brain.error_rate, 3),
+                "skipped": agent.strategic_brain.skipped_calls,
             },
         }
 
