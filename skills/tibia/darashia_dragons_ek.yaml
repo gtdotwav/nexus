@@ -1,0 +1,204 @@
+# NEXUS Skill - Darashia Dragon Lair (Elite Knight)
+# Auto-generated template | Version 1.0
+
+name: "CaveBot - Darashia Dragons EK"
+game: "tibia"
+version: "1.0"
+category: "hunting"
+performance_score: 75.0
+created: "2026-02-11"
+
+metadata:
+  description: "Automated hunting at Darashia Dragon Lair for Elite Knights"
+  level_range: [80, 150]
+  vocation: ["knight", "elite_knight"]
+  estimated_xp_per_hour: 350000
+  estimated_profit_per_hour: 40000
+  danger_level: "medium"
+  recommended_skills:
+    sword: 80
+    shielding: 70
+
+# Waypoint definitions
+# Actions: walk, hunt_area, loot_check, use_rope, use_shovel, depot
+waypoints:
+  # Depot to cave entrance
+  - {x: 33213, y: 32454, z: 7, action: "walk", label: "depot_exit"}
+  - {x: 33225, y: 32440, z: 7, action: "walk"}
+  - {x: 33240, y: 32430, z: 7, action: "walk", label: "cave_entrance"}
+
+  # Cave floor -1
+  - {x: 33240, y: 32430, z: 8, action: "hunt_area", radius: 6, label: "spawn_1"}
+  - {x: 33255, y: 32435, z: 8, action: "hunt_area", radius: 5, label: "spawn_2"}
+  - {x: 33260, y: 32445, z: 8, action: "loot_check"}
+
+  # Cave floor -2
+  - {x: 33260, y: 32445, z: 9, action: "hunt_area", radius: 7, label: "spawn_3"}
+  - {x: 33270, y: 32450, z: 9, action: "hunt_area", radius: 5, label: "spawn_4"}
+  - {x: 33265, y: 32455, z: 9, action: "loot_check"}
+
+  # Return path
+  - {x: 33260, y: 32445, z: 9, action: "walk", label: "return_start"}
+  - {x: 33240, y: 32430, z: 8, action: "walk"}
+  - {x: 33240, y: 32430, z: 7, action: "walk"}
+
+# Target configuration
+targeting:
+  - name: "Dragon"
+    priority: 1
+    stance: "offensive"
+    spell_rotation: ["exori gran", "exori", "exori min"]
+    attack_mode: "full_attack"
+    chase_mode: true
+    keep_distance: 1
+    max_chase_distance: 6
+    loot: true
+
+  - name: "Dragon Lord"
+    priority: 0  # Highest priority (most dangerous)
+    stance: "balanced"
+    spell_rotation: ["exori gran", "exori", "exeta res"]
+    attack_mode: "balanced"
+    chase_mode: true
+    keep_distance: 2
+    max_chase_distance: 4
+    loot: true
+    special_notes: "Fire wave is dangerous, try to position diagonally"
+
+  - name: "Dragon Hatchling"
+    priority: 2
+    stance: "offensive"
+    spell_rotation: ["exori min", "exori"]
+    attack_mode: "full_attack"
+    chase_mode: true
+    keep_distance: 1
+    loot: true
+
+# Healing configuration
+healing:
+  critical_hp_percent: 30
+  medium_hp_percent: 55
+  high_hp_percent: 80
+
+  spells:
+    - name: "exura vita"
+      hp_threshold: 30
+      mana_cost: 160
+      cooldown_ms: 1000
+      priority: 0
+
+    - name: "exura gran"
+      hp_threshold: 55
+      mana_cost: 100
+      cooldown_ms: 1000
+      priority: 1
+
+    - name: "exura"
+      hp_threshold: 80
+      mana_cost: 25
+      cooldown_ms: 1000
+      priority: 2
+
+  potions:
+    - type: "great_health_potion"
+      hp_threshold: 40
+      cooldown_ms: 1000
+      priority: 0
+
+    - type: "great_mana_potion"
+      mana_threshold: 40
+      cooldown_ms: 1000
+      priority: 0
+
+  # Combo healing: use spell + potion simultaneously at critical HP
+  combo_heal:
+    enabled: true
+    hp_threshold: 25
+    spell: "exura vita"
+    potion: "great_health_potion"
+
+# Supply management
+supplies:
+  bring:
+    - {item: "great_health_potion", quantity: 150}
+    - {item: "great_mana_potion", quantity: 300}
+    - {item: "meat", quantity: 20}
+
+  leave_when:
+    - {item: "great_health_potion", below: 15}
+    - {item: "great_mana_potion", below: 30}
+    - condition: "cap_below_100"
+
+  depot_actions:
+    - "deposit_loot"
+    - "refill_supplies"
+    - "sell_common_loot"
+
+# Anti-PK configuration
+anti_pk:
+  enabled: true
+  action: "flee_to_depot"
+  alert: true
+
+  threat_assessment:
+    - skull: "white"
+      action: "watch"  # Monitor but don't flee
+    - skull: "red"
+      action: "flee"
+    - skull: "black"
+      action: "flee_immediately"
+    - following: true
+      action: "flee"
+
+  whitelist: []  # Add trusted player names here
+
+  escape_waypoints:
+    - {x: 33240, y: 32430, z: 7, action: "walk", label: "cave_exit"}
+    - {x: 33225, y: 32440, z: 7, action: "walk"}
+    - {x: 33213, y: 32454, z: 7, action: "walk", label: "depot_safe"}
+
+# Loot configuration
+loot:
+  auto_loot: true
+  loot_delay_ms: 500
+
+  # Items to keep (everything else is left or sold)
+  valuable_items:
+    - "dragon scale mail"
+    - "dragon shield"
+    - "dragon hammer"
+    - "fire sword"
+    - "small diamond"
+    - "gold coin"
+    - "platinum coin"
+
+  # Items to drop/ignore
+  ignore_items:
+    - "empty vial"
+    - "burnt scroll"
+
+# Special behaviors
+behaviors:
+  # Use food for regen
+  auto_eat:
+    enabled: true
+    interval_seconds: 120
+    item: "meat"
+
+  # Use challenge/exeta res to pull monsters
+  pull_monsters:
+    enabled: true
+    spell: "exeta res"
+    when: "monster_count_below_2"
+
+  # Diagonal positioning against Dragon Lords
+  smart_positioning:
+    enabled: true
+    prefer_diagonal: true
+    avoid_straight_line: ["Dragon Lord"]  # Avoid fire wave
+
+  # Manage stamina
+  stamina_check:
+    enabled: true
+    logout_below: 14  # hours
+    warning_below: 20 # hours

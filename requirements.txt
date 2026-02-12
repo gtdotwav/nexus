@@ -1,0 +1,33 @@
+# NEXUS Gaming Agent - Dependencies
+
+# Perception
+dxcam>=0.4.0          # DirectX screen capture (Windows)
+opencv-python>=4.9.0  # Computer vision, template matching
+numpy>=1.26.0         # Fast array operations
+easyocr>=1.7.0        # OCR for game text/chat
+Pillow>=10.0.0        # Image manipulation
+
+# Input Control
+pynput>=1.7.6         # Keyboard and mouse control
+
+# AI Engine
+anthropic>=0.40.0     # Claude API client
+
+# State & Config
+pyyaml>=6.0           # Skill file parsing
+pydantic>=2.5.0       # Data validation and settings
+
+# Async & Performance
+uvloop>=0.19.0;platform_system!='Windows'  # Fast event loop (Linux)
+
+# Logging & Monitoring
+structlog>=24.0.0     # Structured logging
+rich>=13.0.0          # Beautiful terminal output
+
+# Dashboard (optional)
+fastapi>=0.110.0      # REST API for dashboard
+uvicorn>=0.27.0       # ASGI server
+websockets>=12.0      # Real-time updates
+
+# Data
+sqlite-utils>=3.36    # SQLite convenience wrapper

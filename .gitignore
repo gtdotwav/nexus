@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NEXUS runtime data
+data/
+*.db
+*.db-wal
+*.db-shm
+logs/
+
+# User config (contains API keys)
+config/settings.yaml
+.nexus/
+
+# Package lock
+*.lock
+
+# Screenshots & calibration
+*.png
+*.jpg
+*.bmp
+
+# Temporary
+tmp/
+.tmp/

@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS - Gaming AI Agent Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230a0e17' width='100' height='100'/><circle cx='50' cy='50' r='35' fill='none' stroke='%2300ffcc' stroke-width='3'/><circle cx='50' cy='50' r='25' fill='none' stroke='%2300ff88' stroke-width='2'/><circle cx='50' cy='50' r='5' fill='%2300ffcc'/></svg>">
+    <style>
+        :root {
+            --primary: #00ffcc;
+            --secondary: #00ff88;
+            --tertiary: #00ffaa;
+            --danger: #ff3366;
+            --warning: #ffaa00;
+            --success: #00ff88;
+            --bg-dark: #0a0e17;
+            --bg-darker: #050609;
+            --bg-panel: #0f1419;
+            --text-primary: #e8f0ff;
+            --text-secondary: #a0b0c0;
+            --text-tertiary: #606b7a;
+            --border-glow: rgba(0, 255, 204, 0.3);
+            --border: rgba(0, 255, 204, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background: linear-gradient(180deg, rgba(0, 255, 204, 0.05) 0%, transparent 100%);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+            font-size: 12px;
+            gap: 20px;
+            flex-shrink: 0;
+            height: 48px;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: var(--primary);
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+        }
+
+        .nexus-logo {
+            width: 20px;
+            height: 20px;
+            background: conic-gradient(from 0deg, var(--primary), var(--secondary), var(--primary));
+            border-radius: 2px;
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .status-indicator.disconnected {
+            background-color: var(--danger);
+            box-shadow: 0 0 8px var(--danger);
+            animation: pulse 0.5s ease-in-out infinite;
+        }
+
+        .session-timer {
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* MAIN CONTAINER */
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            gap: 0;
+        }
+
+        /* LEFT SIDEBAR */
+        .left-sidebar {
+            display: flex;
+            flex-direction: column;
+            width: 320px;
+            background-color: var(--bg-darker);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            gap: 0;
+            flex-shrink: 0;
+        }
+
+        .panel {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px;
+            margin: 10px;
+            font-size: 11px;
+        }
+
+        .panel-title {
+            font-size: 10px;
+            font-weight: bold;
+            color: var(--primary);
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        /* CHARACTER PANEL */
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+
+        .stat-value {
+            color: var(--text-primary);
+            font-weight: bold;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 18px;
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 4px;
+            position: relative;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88 0%, #00ffcc 100%);
+            transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            position: relative;
+        }
+
+        .bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        .bar-hp {
+            background: linear-gradient(90deg, #ff3366 0%, #ff6688 100%);
+        }
+
+        .bar-hp.healthy {
+            background: linear-gradient(90deg, #00ff88 0%, #00ffcc 100%);
+        }
+
+        .bar-mana {
+            background: linear-gradient(90deg, #3366ff 0%, #00ffcc 100%);
+        }
+
+        .bar-label {
+            position: absolute;
+            top: 50%;
+            left: 4px;
+            transform: translateY(-50%);
+            font-size: 9px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+            z-index: 2;
+        }
+
+        /* METRICS CARDS */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .metric-card {
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            padding: 8px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.2);
+        }
+
+        .metric-value {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--primary);
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 2px;
+        }
+
+        .metric-label {
+            font-size: 9px;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* CENTER PANELS */
+        .center-panels {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            gap: 0;
+            overflow: hidden;
+        }
+
+        .row-panels {
+            display: flex;
+            gap: 0;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .col-panels {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel-flex {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            margin: 8px;
+            border-radius: 4px;
+            min-height: 0;
+        }
+
+        /* COMBAT PANEL */
+        .battle-item {
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            padding: 6px;
+            margin-bottom: 6px;
+            font-size: 10px;
+        }
+
+        .battle-name {
+            color: var(--primary);
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .threat-level {
+            display: inline-block;
+            padding: 2px 6px;
+            background-color: var(--bg-panel);
+            border-radius: 2px;
+            font-size: 9px;
+            margin-top: 4px;
+        }
+
+        .threat-none {
+            color: var(--success);
+        }
+
+        .threat-low {
+            color: var(--warning);
+        }
+
+        .threat-medium {
+            color: #ff9900;
+        }
+
+        .threat-high {
+            color: var(--danger);
+        }
+
+        .combat-mode-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            background-color: rgba(0, 255, 204, 0.1);
+            border: 1px solid var(--primary);
+            border-radius: 2px;
+            font-size: 9px;
+            color: var(--primary);
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            animation: mode-pulse 0.5s ease;
+        }
+
+        /* CONSCIOUSNESS PANEL */
+        .emotion-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: var(--bg-darker);
+            border-radius: 2px;
+            border: 1px solid var(--border);
+        }
+
+        .emotion-emoji {
+            font-size: 20px;
+        }
+
+        .emotion-text {
+            color: var(--text-primary);
+            font-weight: bold;
+        }
+
+        .goals-list {
+            font-size: 9px;
+            color: var(--text-secondary);
+            margin: 6px 0;
+        }
+
+        .goal-item {
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .goal-item:last-child {
+            border-bottom: none;
+        }
+
+        .goal-priority {
+            display: inline-block;
+            background-color: var(--bg-panel);
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-size: 8px;
+            color: var(--primary);
+        }
+
+        .mastery-bar {
+            margin: 6px 0;
+        }
+
+        .mastery-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+        }
+
+        .mastery-value {
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        /* REASONING PANEL */
+        .reasoning-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            margin: 6px 0;
+            font-size: 9px;
+            color: var(--text-secondary);
+        }
+
+        .reasoning-icon {
+            flex-shrink: 0;
+            width: 16px;
+            text-align: center;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        .danger-arrow {
+            font-size: 12px;
+            display: inline-block;
+        }
+
+        .warning-text {
+            color: var(--danger);
+            background-color: rgba(255, 51, 102, 0.1);
+            padding: 2px 4px;
+            border-radius: 2px;
+            border-left: 2px solid var(--danger);
+            margin: 4px 0;
+        }
+
+        .opportunity-text {
+            color: var(--success);
+            background-color: rgba(0, 255, 136, 0.1);
+            padding: 2px 4px;
+            border-radius: 2px;
+            border-left: 2px solid var(--success);
+            margin: 4px 0;
+        }
+
+        /* EXPLORER PANEL */
+        .explorer-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 6px;
+            background-color: var(--bg-darker);
+            border-radius: 2px;
+            border: 1px solid var(--border);
+        }
+
+        .active-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background-color: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--success);
+            border-radius: 2px;
+            color: var(--success);
+            font-size: 9px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .inactive-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background-color: rgba(160, 176, 192, 0.1);
+            border: 1px solid var(--text-tertiary);
+            border-radius: 2px;
+            color: var(--text-tertiary);
+            font-size: 9px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        /* MINIMAP */
+        .minimap-container {
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+        }
+
+        #minimapCanvas {
+            display: block;
+            background-color: var(--bg-darker);
+        }
+
+        /* CONTROLS PANEL */
+        .controls-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        button {
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 2px;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+            font-weight: bold;
+        }
+
+        button:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.3);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button.primary {
+            background-color: rgba(0, 255, 204, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        button.primary:hover {
+            background-color: rgba(0, 255, 204, 0.2);
+            box-shadow: 0 0 12px rgba(0, 255, 204, 0.5);
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            border-color: var(--text-tertiary);
+            color: var(--text-tertiary);
+        }
+
+        select {
+            background-color: var(--bg-darker);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 2px;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        select:hover {
+            border-color: var(--primary);
+        }
+
+        /* LOG STREAM */
+        .log-stream {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 8px;
+            margin: 8px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .log-messages {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 2px;
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .log-entry {
+            padding: 3px 6px;
+            border-radius: 2px;
+            background-color: var(--bg-darker);
+            border-left: 2px solid var(--text-tertiary);
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            animation: log-slide-in 0.3s ease;
+        }
+
+        .log-entry.info {
+            border-left-color: var(--primary);
+            color: var(--text-primary);
+        }
+
+        .log-entry.warning {
+            border-left-color: var(--warning);
+            color: var(--warning);
+        }
+
+        .log-entry.error {
+            border-left-color: var(--danger);
+            color: var(--danger);
+        }
+
+        .log-entry.success {
+            border-left-color: var(--success);
+            color: var(--success);
+        }
+
+        /* ANIMATIONS */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 204, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.8); }
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        @keyframes mode-pulse {
+            0% { background-color: rgba(0, 255, 204, 0.3); }
+            100% { background-color: rgba(0, 255, 204, 0.1); }
+        }
+
+        @keyframes log-slide-in {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes hp-flash {
+            0%, 100% { box-shadow: 0 0 0 rgba(255, 51, 102, 0); }
+            50% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.6); }
+        }
+
+        .bar-container.flash {
+            animation: hp-flash 0.4s ease;
+        }
+
+        /* SCROLLBAR STYLING */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: var(--primary);
+            box-shadow: 0 0 6px rgba(0, 255, 204, 0.3);
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 1200px) {
+            .left-sidebar {
+                width: 260px;
+            }
+            .panel {
+                margin: 6px;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-title">
+            <div class="nexus-logo"></div>
+            NEXUS AI AGENT
+        </div>
+        <div class="header-status">
+            <div class="status-badge">
+                <div class="status-indicator" id="connectionStatus"></div>
+                <span id="connectionText">CONNECTING</span>
+            </div>
+            <div class="status-badge">
+                <span id="sessionTimer">0:00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="container">
+        <!-- LEFT SIDEBAR -->
+        <div class="left-sidebar">
+            <!-- CHARACTER PANEL -->
+            <div class="panel">
+                <div class="panel-title">Character</div>
+                <div class="stat-row">
+                    <span class="stat-label">Level</span>
+                    <span class="stat-value" id="charLevel">—</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Class</span>
+                    <span class="stat-value" id="charClass">—</span>
+                </div>
+
+                <div class="bar-container" id="hpBar">
+                    <div class="bar-fill bar-hp healthy" style="width: 100%;">
+                        <div class="bar-label" id="hpLabel">100/100</div>
+                    </div>
+                </div>
+
+                <div class="bar-container" id="manaBar" style="margin-top: 6px;">
+                    <div class="bar-fill bar-mana" style="width: 100%;">
+                        <div class="bar-label" id="manaLabel">100/100</div>
+                    </div>
+                </div>
+
+                <div class="stat-row" style="margin-top: 8px;">
+                    <span class="stat-label">Position</span>
+                </div>
+                <div style="font-size: 9px; color: var(--text-secondary); margin-bottom: 8px;">
+                    <span id="posX">X: —</span> | <span id="posY">Y: —</span> | <span id="posZ">Z: —</span>
+                </div>
+            </div>
+
+            <!-- SESSION METRICS -->
+            <div class="panel">
+                <div class="panel-title">Session Metrics</div>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value" id="xpHr">—</div>
+                        <div class="metric-label">XP/hr</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="goldHr">—</div>
+                        <div class="metric-label">Gold/hr</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="kills">—</div>
+                        <div class="metric-label">Kills</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="deaths">—</div>
+                        <div class="metric-label">Deaths</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="closeCalls">—</div>
+                        <div class="metric-label">Close Calls</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="duration">—</div>
+                        <div class="metric-label">Duration</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EXPLORER STATS -->
+            <div class="panel">
+                <div class="panel-title">Explorer</div>
+                <div class="explorer-status">
+                    <span id="explorerBadge" class="inactive-badge">IDLE</span>
+                    <span style="font-size: 9px; color: var(--text-secondary);" id="explorerStrategy">—</span>
+                </div>
+                <div style="font-size: 9px; color: var(--text-secondary); line-height: 1.6;">
+                    <div>Explored: <strong id="explorerTotal" style="color: var(--primary);">—</strong></div>
+                    <div>Floors: <strong id="explorerFloors" style="color: var(--primary);">—</strong></div>
+                    <div>Landmarks: <strong id="explorerLandmarks" style="color: var(--primary);">—</strong></div>
+                    <div>Zones: <strong id="explorerZones" style="color: var(--primary);">—</strong></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER CONTENT -->
+        <div class="center-panels">
+            <!-- TOP ROW: Combat + Consciousness -->
+            <div class="row-panels" style="flex: 0.6;">
+                <!-- COMBAT PANEL -->
+                <div class="panel-flex" style="flex: 0.5;">
+                    <div class="panel-title">Combat</div>
+                    <div id="combatMode" class="combat-mode-badge">—</div>
+                    <div style="font-size: 9px; color: var(--text-secondary); margin-bottom: 8px;">
+                        Target: <strong id="targetName" style="color: var(--primary);">None</strong>
+                    </div>
+                    <div style="font-size: 9px; margin-bottom: 8px;">
+                        <span class="stat-label">Threat:</span>
+                        <span id="threatLevel" class="threat-none">NONE</span>
+                    </div>
+                    <div style="flex: 1; overflow-y: auto;">
+                        <div id="battleList"></div>
+                    </div>
+                </div>
+
+                <!-- CONSCIOUSNESS PANEL -->
+                <div class="panel-flex" style="flex: 0.5;">
+                    <div class="panel-title">Consciousness</div>
+                    <div class="emotion-display" id="emotionDisplay">
+                        <span class="emotion-emoji">😐</span>
+                        <span class="emotion-text" id="emotionText">neutral</span>
+                    </div>
+
+                    <div style="font-size: 9px; color: var(--text-secondary); margin-top: 8px;">Mastery:</div>
+                    <div id="masteryBars"></div>
+
+                    <div style="font-size: 9px; color: var(--text-secondary); margin-top: 8px;">Active Goals:</div>
+                    <div class="goals-list" id="goalsList"></div>
+                </div>
+            </div>
+
+            <!-- MIDDLE ROW: Reasoning + Minimap -->
+            <div class="row-panels" style="flex: 0.65;">
+                <!-- REASONING PANEL -->
+                <div class="panel-flex" style="flex: 0.4;">
+                    <div class="panel-title">Reasoning</div>
+                    <div class="reasoning-item">
+                        <span class="reasoning-icon" id="dangerArrow">→</span>
+                        <span>Danger: <strong id="dangerTrend" style="color: var(--primary);">—</strong></span>
+                    </div>
+                    <div class="reasoning-item">
+                        <span class="reasoning-icon">⚔</span>
+                        <span>Difficulty: <strong id="creatureDiff" style="color: var(--primary);">—</strong></span>
+                    </div>
+                    <div class="reasoning-item">
+                        <span class="reasoning-icon">📍</span>
+                        <span>Topology: <strong id="topology" style="color: var(--primary);">—</strong></span>
+                    </div>
+                    <div class="reasoning-item">
+                        <span class="reasoning-icon">⚡</span>
+                        <span>Efficiency: <strong id="efficiency" style="color: var(--primary);">—</strong></span>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 9px;">
+                        <strong style="color: var(--text-secondary);">Recommendation:</strong>
+                        <div id="recommendation" style="color: var(--primary); margin-top: 3px;">—</div>
+                    </div>
+                    <div id="warningsList" style="margin-top: 6px;"></div>
+                    <div id="opportunitiesList" style="margin-top: 6px;"></div>
+                </div>
+
+                <!-- MINIMAP -->
+                <div class="panel-flex" style="flex: 0.6;">
+                    <div class="panel-title">Spatial Memory</div>
+                    <div class="minimap-container">
+                        <canvas id="minimapCanvas" width="300" height="280"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BOTTOM ROW: Controls + Log -->
+            <div class="row-panels" style="flex: 0.75;">
+                <!-- CONTROLS -->
+                <div class="panel-flex" style="flex: 0.3;">
+                    <div class="panel-title">Controls</div>
+                    <div class="controls-panel">
+                        <div class="button-group">
+                            <button class="primary" id="btnFrontier">▸ Frontier</button>
+                            <button class="primary" id="btnDeep">▸ Deep</button>
+                        </div>
+                        <div class="button-group">
+                            <button class="primary" id="btnSafe">▸ Safe</button>
+                            <button class="primary" id="btnValue">▸ Value</button>
+                        </div>
+                        <button class="primary" style="width: 100%;" id="btnStop">⏹ Stop</button>
+                        <button id="btnSaveMap" style="width: 100%;">💾 Save Map</button>
+
+                        <select id="modeSelect" style="width: 100%; margin-top: 6px;">
+                            <option value="">Mode</option>
+                            <option value="HUNTING">Hunting</option>
+                            <option value="EXPLORING">Exploring</option>
+                            <option value="RECOVERY">Recovery</option>
+                            <option value="IDLE">Idle</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- LOG STREAM -->
+                <div class="log-stream" style="flex: 0.7;">
+                    <div class="panel-title">Event Log</div>
+                    <div class="log-messages" id="logStream"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // CONFIGURATION & STATE
+        // ============================================================================
+        const WS_URL = 'ws://localhost:8420/ws';
+        const MAX_LOG_ENTRIES = 50;
+        const MINIMAP_TILE_SIZE = 8;
+        const MINIMAP_RADIUS = 50;
+
+        let ws = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 10;
+        let reconnectDelay = 1000;
+
+        let appState = {
+            connected: false,
+            sessionStart: null,
+            lastUpdate: Date.now(),
+            character: { hp: 100, mana: 100, position: { x: 0, y: 0, z: 0 } },
+            combat: { mode: 'IDLE', threat: 'NONE', target: null, battle_list: [] },
+            session: { duration_min: 0, xp_hr: 0, gold_hr: 0, deaths: 0, kills: 0, close_calls: 0 },
+            consciousness: { emotion: 'neutral', mastery: {}, goals: [] },
+            reasoning: { danger_trend: 'stable', creature_difficulty: 'unknown', topology: 'unknown' },
+            explorer: { active: false, strategy: null },
+            spatial_memory: { total_explored: 0, floors: 0, landmarks: 0, zones: 0 }
+        };
+
+        const emotionMap = {
+            'neutral': '😐',
+            'focused': '🎯',
+            'cautious': '⚠️',
+            'aggressive': '💢',
+            'anxious': '😰',
+            'confident': '💪',
+            'strategic': '🧠',
+            'curious': '🔍'
+        };
+
+        // ============================================================================
+        // WEBSOCKET MANAGEMENT
+        // ============================================================================
+        function connectWebSocket() {
+            try {
+                ws = new WebSocket(WS_URL);
+
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    appState.connected = true;
+                    reconnectAttempts = 0;
+                    reconnectDelay = 1000;
+                    updateConnectionStatus(true);
+                    addLog('Connected to NEXUS server', 'success');
+                };
+
+                ws.onmessage = (event) => {
+                    handleWebSocketMessage(JSON.parse(event.data));
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    addLog('WebSocket error occurred', 'error');
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    appState.connected = false;
+                    updateConnectionStatus(false);
+                    addLog('Disconnected from server', 'warning');
+                    attemptReconnect();
+                };
+            } catch (error) {
+                console.error('Failed to connect WebSocket:', error);
+                attemptReconnect();
+            }
+        }
+
+        function attemptReconnect() {
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++;
+                const delay = reconnectDelay * Math.pow(1.5, reconnectAttempts - 1);
+                console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                setTimeout(connectWebSocket, delay);
+            } else {
+                addLog('Max reconnection attempts reached', 'error');
+                updateConnectionStatus(false);
+            }
+        }
+
+        function handleWebSocketMessage(msg) {
+            if (msg.type === 'state') {
+                updateAppState(msg.data);
+                render();
+            } else if (msg.type === 'log') {
+                addLog(msg.message, msg.level || 'info');
+            }
+        }
+
+        function sendCommand(command, params = {}) {
+            if (appState.connected && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'command', command, params }));
+            } else {
+                addLog('Not connected - command ignored', 'warning');
+            }
+        }
+
+        // ============================================================================
+        // STATE MANAGEMENT
+        // ============================================================================
+        function updateAppState(newData) {
+            const oldHp = appState.character.hp;
+            const oldMode = appState.combat.mode;
+
+            appState = { ...appState, ...newData };
+            appState.lastUpdate = Date.now();
+
+            // Detect changes for animations
+            if (appState.character.hp < oldHp) {
+                triggerHPFlash();
+            }
+            if (appState.combat.mode !== oldMode) {
+                triggerModeChange();
+            }
+
+            // Update session timer
+            if (!appState.sessionStart && newData.session?.duration_min) {
+                appState.sessionStart = Date.now() - (newData.session.duration_min * 60000);
+            }
+        }
+
+        // ============================================================================
+        // RENDERING
+        // ============================================================================
+        function render() {
+            renderCharacter();
+            renderMetrics();
+            renderCombat();
+            renderConsciousness();
+            renderReasoning();
+            renderExplorer();
+            updateSessionTimer();
+            renderMinimap();
+        }
+
+        function renderCharacter() {
+            const char = appState.character;
+            const maxHp = 100; // Placeholder
+            const maxMana = 100; // Placeholder
+
+            const hpPercent = Math.max(0, Math.min(100, (char.hp / maxHp) * 100));
+            const manaPercent = Math.max(0, Math.min(100, (char.mana / maxMana) * 100));
+
+            const hpBar = document.getElementById('hpBar').querySelector('.bar-fill');
+            hpBar.style.width = hpPercent + '%';
+            hpBar.classList.toggle('bar-hp', hpPercent < 50);
+            hpBar.classList.toggle('healthy', hpPercent >= 50);
+            document.getElementById('hpLabel').textContent = `${char.hp}/${maxHp}`;
+
+            const manaBar = document.getElementById('manaBar').querySelector('.bar-fill');
+            manaBar.style.width = manaPercent + '%';
+            document.getElementById('manaLabel').textContent = `${char.mana}/${maxMana}`;
+
+            document.getElementById('posX').textContent = `X: ${char.position.x}`;
+            document.getElementById('posY').textContent = `Y: ${char.position.y}`;
+            document.getElementById('posZ').textContent = `Z: ${char.position.z}`;
+
+            document.getElementById('charLevel').textContent = char.level || '—';
+            document.getElementById('charClass').textContent = char.class || '—';
+        }
+
+        function renderMetrics() {
+            const sess = appState.session;
+            document.getElementById('xpHr').textContent = formatNumber(sess.xp_hr);
+            document.getElementById('goldHr').textContent = formatNumber(sess.gold_hr);
+            document.getElementById('kills').textContent = sess.kills || 0;
+            document.getElementById('deaths').textContent = sess.deaths || 0;
+            document.getElementById('closeCalls').textContent = sess.close_calls || 0;
+            document.getElementById('duration').textContent = formatDuration(sess.duration_min);
+        }
+
+        function renderCombat() {
+            const combat = appState.combat;
+            const mode = combat.mode || 'IDLE';
+            document.getElementById('combatMode').textContent = mode;
+
+            const target = combat.target || 'None';
+            document.getElementById('targetName').textContent = target;
+
+            const threatLevel = combat.threat || 'NONE';
+            const threatEl = document.getElementById('threatLevel');
+            threatEl.textContent = threatLevel;
+            threatEl.className = 'threat-' + threatLevel.toLowerCase();
+
+            const battleList = document.getElementById('battleList');
+            battleList.innerHTML = '';
+            if (combat.battle_list && combat.battle_list.length > 0) {
+                combat.battle_list.slice(0, 10).forEach(creature => {
+                    const item = document.createElement('div');
+                    item.className = 'battle-item';
+                    const hpPercent = (creature.hp / (creature.max_hp || 100)) * 100;
+                    item.innerHTML = `
+                        <div class="battle-name">${creature.name}</div>
+                        <div class="bar-container" style="margin-top: 2px;">
+                            <div class="bar-fill bar-hp" style="width: ${hpPercent}%;"></div>
+                        </div>
+                        <div class="threat-level" style="margin-top: 4px; color: var(--text-secondary);">
+                            ${creature.hp}/${creature.max_hp || 100} HP
+                        </div>
+                    `;
+                    battleList.appendChild(item);
+                });
+            } else {
+                battleList.innerHTML = '<div style="color: var(--text-secondary); font-size: 9px;">No active battles</div>';
+            }
+        }
+
+        function renderConsciousness() {
+            const cons = appState.consciousness;
+
+            // Emotion
+            const emoji = emotionMap[cons.emotion] || '😐';
+            document.getElementById('emotionDisplay').innerHTML = `
+                <span class="emotion-emoji">${emoji}</span>
+                <span class="emotion-text">${cons.emotion || 'neutral'}</span>
+            `;
+
+            // Mastery bars
+            const masteryEl = document.getElementById('masteryBars');
+            masteryEl.innerHTML = '';
+            if (cons.mastery && Object.keys(cons.mastery).length > 0) {
+                Object.entries(cons.mastery).forEach(([key, value]) => {
+                    const percent = Math.min(100, Math.max(0, value * 100));
+                    masteryEl.innerHTML += `
+                        <div class="mastery-bar">
+                            <div class="mastery-label">
+                                <span>${key}</span>
+                                <span class="mastery-value">${percent.toFixed(0)}%</span>
+                            </div>
+                            <div class="bar-container" style="height: 8px;">
+                                <div class="bar-fill" style="width: ${percent}%; background: linear-gradient(90deg, #0066ff 0%, #00ffcc 100%);"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            // Goals
+            const goalsEl = document.getElementById('goalsList');
+            goalsEl.innerHTML = '';
+            if (cons.goals && cons.goals.length > 0) {
+                cons.goals.slice(0, 5).forEach((goal, idx) => {
+                    const priorityColor = goal.priority === 1 ? 'var(--danger)' : 'var(--primary)';
+                    goalsEl.innerHTML += `
+                        <div class="goal-item">
+                            <span>${goal.text}</span>
+                            <span class="goal-priority" style="color: ${priorityColor};">P${goal.priority || 2}</span>
+                        </div>
+                    `;
+                });
+            } else {
+                goalsEl.innerHTML = '<div style="color: var(--text-secondary);">No active goals</div>';
+            }
+        }
+
+        function renderReasoning() {
+            const reason = appState.reasoning;
+
+            // Danger trend
+            const trendArrows = {
+                'increasing': '↗️',
+                'decreasing': '↘️',
+                'stable': '→'
+            };
+            document.getElementById('dangerArrow').textContent = trendArrows[reason.danger_trend] || '→';
+            document.getElementById('dangerTrend').textContent = reason.danger_trend || 'unknown';
+
+            document.getElementById('creatureDiff').textContent = reason.creature_difficulty || 'unknown';
+            document.getElementById('topology').textContent = reason.topology || 'unknown';
+            document.getElementById('efficiency').textContent = (reason.efficiency ? (reason.efficiency * 100).toFixed(0) + '%' : '—');
+            document.getElementById('recommendation').textContent = reason.recommendation || 'continue monitoring';
+
+            // Warnings
+            const warningsEl = document.getElementById('warningsList');
+            warningsEl.innerHTML = '';
+            if (reason.warnings && reason.warnings.length > 0) {
+                reason.warnings.forEach(warning => {
+                    warningsEl.innerHTML += `<div class="warning-text">⚠️ ${warning}</div>`;
+                });
+            }
+
+            // Opportunities
+            const oppEl = document.getElementById('opportunitiesList');
+            oppEl.innerHTML = '';
+            if (reason.opportunities && reason.opportunities.length > 0) {
+                reason.opportunities.forEach(opp => {
+                    oppEl.innerHTML += `<div class="opportunity-text">✓ ${opp}</div>`;
+                });
+            }
+        }
+
+        function renderExplorer() {
+            const exp = appState.explorer;
+            const mem = appState.spatial_memory;
+
+            const badge = exp.active ? '<span class="active-badge">Active</span>' : '<span class="inactive-badge">Idle</span>';
+            document.querySelector('.explorer-status').innerHTML = `
+                ${badge}
+                <span style="font-size: 9px; color: var(--text-secondary);">${exp.strategy || '—'}</span>
+            `;
+
+            document.getElementById('explorerTotal').textContent = mem.total_explored || '0';
+            document.getElementById('explorerFloors').textContent = mem.floors || '0';
+            document.getElementById('explorerLandmarks').textContent = mem.landmarks || '0';
+            document.getElementById('explorerZones').textContent = mem.zones || '0';
+        }
+
+        function renderMinimap() {
+            const canvas = document.getElementById('minimapCanvas');
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Clear
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-darker').trim();
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.1)';
+            ctx.lineWidth = 0.5;
+            for (let i = -MINIMAP_RADIUS; i <= MINIMAP_RADIUS; i += 5) {
+                ctx.beginPath();
+                ctx.moveTo(centerX + i * MINIMAP_TILE_SIZE, centerY - MINIMAP_RADIUS * MINIMAP_TILE_SIZE);
+                ctx.lineTo(centerX + i * MINIMAP_TILE_SIZE, centerY + MINIMAP_RADIUS * MINIMAP_TILE_SIZE);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(centerX - MINIMAP_RADIUS * MINIMAP_TILE_SIZE, centerY + i * MINIMAP_TILE_SIZE);
+                ctx.lineTo(centerX + MINIMAP_RADIUS * MINIMAP_TILE_SIZE, centerY + i * MINIMAP_TILE_SIZE);
+                ctx.stroke();
+            }
+
+            // Draw player
+            ctx.fillStyle = 'rgba(0, 255, 204, 0.8)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(0, 255, 204, 1)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Direction indicator
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(centerX, centerY - 15);
+            ctx.stroke();
+
+            // Draw some dummy explored regions (in real implementation, load from spatial_memory)
+            ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
+            for (let i = -20; i < 20; i += 3) {
+                for (let j = -20; j < 20; j += 3) {
+                    if (Math.random() > 0.3) {
+                        ctx.fillRect(
+                            centerX + i * MINIMAP_TILE_SIZE,
+                            centerY + j * MINIMAP_TILE_SIZE,
+                            MINIMAP_TILE_SIZE - 1,
+                            MINIMAP_TILE_SIZE - 1
+                        );
+                    }
+                }
+            }
+        }
+
+        function updateSessionTimer() {
+            if (!appState.sessionStart) return;
+            const elapsed = Date.now() - appState.sessionStart;
+            const minutes = Math.floor(elapsed / 60000);
+            const seconds = Math.floor((elapsed % 60000) / 1000);
+            document.getElementById('sessionTimer').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateConnectionStatus(connected) {
+            const indicator = document.getElementById('connectionStatus');
+            const text = document.getElementById('connectionText');
+            if (connected) {
+                indicator.classList.remove('disconnected');
+                text.textContent = 'CONNECTED';
+            } else {
+                indicator.classList.add('disconnected');
+                text.textContent = 'OFFLINE';
+            }
+        }
+
+        // ============================================================================
+        // UI INTERACTIONS
+        // ============================================================================
+        function setupEventListeners() {
+            document.getElementById('btnFrontier').addEventListener('click', () => {
+                sendCommand('explore', { strategy: 'FRONTIER' });
+                addLog('Exploration: FRONTIER mode activated', 'info');
+            });
+            document.getElementById('btnDeep').addEventListener('click', () => {
+                sendCommand('explore', { strategy: 'DEEP' });
+                addLog('Exploration: DEEP mode activated', 'info');
+            });
+            document.getElementById('btnSafe').addEventListener('click', () => {
+                sendCommand('explore', { strategy: 'SAFE' });
+                addLog('Exploration: SAFE mode activated', 'info');
+            });
+            document.getElementById('btnValue').addEventListener('click', () => {
+                sendCommand('explore', { strategy: 'VALUE' });
+                addLog('Exploration: VALUE mode activated', 'info');
+            });
+            document.getElementById('btnStop').addEventListener('click', () => {
+                sendCommand('stop_explore', {});
+                addLog('Exploration stopped', 'warning');
+            });
+            document.getElementById('btnSaveMap').addEventListener('click', () => {
+                sendCommand('save_map', {});
+                addLog('Map saved to storage', 'success');
+            });
+            document.getElementById('modeSelect').addEventListener('change', (e) => {
+                if (e.target.value) {
+                    sendCommand('set_mode', { mode: e.target.value });
+                    addLog(`Mode changed to ${e.target.value}`, 'info');
+                }
+            });
+        }
+
+        function triggerHPFlash() {
+            const bar = document.getElementById('hpBar');
+            bar.classList.remove('flash');
+            void bar.offsetWidth; // Trigger reflow
+            bar.classList.add('flash');
+            setTimeout(() => bar.classList.remove('flash'), 400);
+        }
+
+        function triggerModeChange() {
+            const badge = document.getElementById('combatMode');
+            badge.style.animation = 'none';
+            void badge.offsetWidth;
+            badge.style.animation = 'mode-pulse 0.5s ease';
+        }
+
+        function addLog(message, level = 'info') {
+            const logStream = document.getElementById('logStream');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${level}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logStream.insertAdjacentElement('afterbegin', entry);
+
+            // Keep only max entries
+            while (logStream.children.length > MAX_LOG_ENTRIES) {
+                logStream.removeChild(logStream.lastChild);
+            }
+        }
+
+        // ============================================================================
+        // UTILITIES
+        // ============================================================================
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        function formatDuration(minutes) {
+            const h = Math.floor(minutes / 60);
+            const m = Math.floor(minutes % 60);
+            if (h > 0) return `${h}h ${m}m`;
+            return `${m}m`;
+        }
+
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+        function init() {
+            console.log('Initializing NEXUS Dashboard');
+            setupEventListeners();
+            connectWebSocket();
+
+            // Initial render
+            render();
+
+            // Animation loop
+            setInterval(() => {
+                updateSessionTimer();
+                renderMinimap();
+            }, 1000);
+
+            addLog('Dashboard initialized', 'success');
+        }
+
+        // Start on load
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

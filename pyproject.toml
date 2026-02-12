@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-agent"
+version = "0.1.0"
+description = "NEXUS — Autonomous Gaming Agent with Dual-Brain AI Architecture"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "NEXUS Team"},
+]
+keywords = ["gaming", "ai", "agent", "autonomous", "tibia"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "opencv-python>=4.9.0",
+    "numpy>=1.26.0",
+    "Pillow>=10.0.0",
+    "pynput>=1.7.6",
+    "anthropic>=0.40.0",
+    "pyyaml>=6.0",
+    "structlog>=24.0.0",
+    "rich>=13.0.0",
+    "aiohttp>=3.9.0",
+    "aiohttp-cors>=0.7.0",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+windows = [
+    "dxcam>=0.4.0",
+]
+ocr = [
+    "easyocr>=1.7.0",
+]
+fast = [
+    "uvloop>=0.19.0;platform_system!='Windows'",
+]
+all = [
+    "nexus-agent[ocr,fast]",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+nexus = "nexus_cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/nexus-agent/nexus"
+Documentation = "https://nexus-agent.github.io"
+Repository = "https://github.com/nexus-agent/nexus"
+
+[tool.setuptools.packages.find]
+include = [
+    "core*",
+    "brain*",
+    "perception*",
+    "actions*",
+    "skills*",
+    "dashboard*",
+    "games*",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
