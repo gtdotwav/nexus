@@ -3,7 +3,7 @@
 
 agent:
   name: "NEXUS"
-  version: "0.1.0"
+  version: "0.2.0"
   game: "tibia"
   character_name: "YOUR_CHARACTER_NAME"
   log_level: "INFO"
