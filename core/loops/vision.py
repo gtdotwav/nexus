@@ -179,8 +179,16 @@ async def run(agent: "NexusAgent") -> None:
                 await asyncio.sleep(cycle_seconds)
                 continue
 
-            # 5. Parse response
-            text = response.content[0].text
+            # 5. Parse response — safe access to content[0]
+            first_block = response.content[0] if response.content else None
+            if not first_block or not hasattr(first_block, "text"):
+                errors += 1
+                log.warning("vision_loop.invalid_response_format",
+                            content_type=type(first_block).__name__ if first_block else "None")
+                await asyncio.sleep(cycle_seconds)
+                continue
+
+            text = first_block.text
             scene = _parse_vision_response(text)
 
             if not scene:
@@ -319,11 +327,15 @@ async def _check_auto_skill_generation(agent: "NexusAgent"):
     """
     from core.state import AgentMode
 
+    # Guard: skill engine must be ready
+    if not hasattr(agent, "skill_engine") or agent.skill_engine is None:
+        return
+
     # Only auto-generate if we're in EXPLORING mode with no active skill
     if agent.state.mode != AgentMode.EXPLORING:
         return
 
-    if agent.skill_engine.active_skill is not None:
+    if getattr(agent.skill_engine, "active_skill", None) is not None:
         return
 
     threshold = agent.config.get("knowledge", {}).get("auto_skill_threshold", 3)
@@ -374,6 +386,10 @@ def _parse_vision_response(text: str) -> dict:
 
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
-        log.warning("vision_loop.json_parse_fail", response=text[:100])
+    except json.JSONDecodeError as e:
+        log.warning("vision_loop.json_parse_fail",
+                    error=str(e),
+                    response_len=len(text),
+                    head=text[:200],
+                    tail=text[-100:] if len(text) > 200 else "")
         return {}

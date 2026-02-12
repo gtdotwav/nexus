@@ -8,6 +8,7 @@ Uses dxcam on Windows (DirectX capture) with fallback to mss.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import numpy as np
 import structlog
@@ -36,6 +37,7 @@ class ScreenCapture:
         self._initialized = False
         self._frame_count = 0
         self._fps_timer = time.time()
+        self._fps_lock = threading.Lock()  # Thread-safe FPS counter
         self._last_frame: Optional[np.ndarray] = None  # Cached for vision loop
 
     @property
@@ -101,14 +103,15 @@ class ScreenCapture:
             if frame is not None:
                 self._last_frame = frame
 
-            # Track FPS
-            self._frame_count += 1
-            elapsed = time.time() - self._fps_timer
-            if elapsed >= 5.0:  # Log FPS every 5 seconds
-                actual_fps = self._frame_count / elapsed
-                log.debug("screen_capture.fps", actual=round(actual_fps, 1), target=self.fps)
-                self._frame_count = 0
-                self._fps_timer = time.time()
+            # Track FPS (thread-safe)
+            with self._fps_lock:
+                self._frame_count += 1
+                elapsed = time.time() - self._fps_timer
+                if elapsed >= 5.0:  # Log FPS every 5 seconds
+                    actual_fps = self._frame_count / elapsed
+                    log.debug("screen_capture.fps", actual=round(actual_fps, 1), target=self.fps)
+                    self._frame_count = 0
+                    self._fps_timer = time.time()
 
             return frame
 

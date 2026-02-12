@@ -722,13 +722,17 @@ class Consciousness:
         ts = datetime.fromtimestamp(entry.timestamp).strftime('%H:%M:%S')
         line = f"- [{ts}] **{entry.category}** ({entry.importance:.1f}): {entry.content}\n"
 
-        # Check before opening — avoids race condition with stat() inside open context
-        needs_header = not log_file.exists() or log_file.stat().st_size == 0
+        try:
+            # Check before opening — avoids race condition with stat() inside open context
+            needs_header = not log_file.exists() or log_file.stat().st_size == 0
 
-        async with aiofiles.open(log_file, "a") as f:
-            if needs_header:
-                await f.write(f"# NEXUS Session Log — {today}\n\n")
-            await f.write(line)
+            async with aiofiles.open(log_file, "a") as f:
+                if needs_header:
+                    await f.write(f"# NEXUS Session Log — {today}\n\n")
+                await f.write(line)
+        except OSError as e:
+            log.error("consciousness.daily_log_write_error",
+                      error=str(e)[:100], file=str(log_file))
 
     async def _load_core_memory(self):
         memory_file = self.memory_dir / "MEMORY.md"

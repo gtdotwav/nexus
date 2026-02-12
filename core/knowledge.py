@@ -163,8 +163,8 @@ class KnowledgeEngine:
                 if key in ("encounters", "kills", "deaths_from"):
                     updates[key] = existing.get(key, 0) + value
                 elif key == "loot_items" and value:
-                    old_loot = json.loads(existing.get("loot_items", "[]"))
-                    new_items = value if isinstance(value, list) else json.loads(value)
+                    old_loot = self._safe_json_load(existing.get("loot_items"), [])
+                    new_items = value if isinstance(value, list) else self._safe_json_load(value, [])
                     merged = list(set(old_loot + new_items))
                     updates["loot_items"] = json.dumps(merged)
                 elif value is not None and value != "":
@@ -309,9 +309,9 @@ class KnowledgeEngine:
                 if key == "visits":
                     updates[key] = existing.get(key, 0) + value
                 elif key in ("connections", "npcs", "creatures") and value:
-                    # Merge lists
-                    old_list = json.loads(existing.get(key, "[]"))
-                    new_list = value if isinstance(value, list) else json.loads(value)
+                    # Merge lists — safe parse from DB + input
+                    old_list = self._safe_json_load(existing.get(key), [])
+                    new_list = value if isinstance(value, list) else self._safe_json_load(value, [])
                     merged = list(set(old_list + new_list))
                     updates[key] = json.dumps(merged)
                 elif value is not None and value != "":
@@ -582,6 +582,22 @@ class KnowledgeEngine:
     # ═══════════════════════════════════════════════════════
     #  INTERNAL
     # ═══════════════════════════════════════════════════════
+
+    @staticmethod
+    def _safe_json_load(data, default=None):
+        """Safely parse JSON from database fields. Returns default on any error."""
+        if default is None:
+            default = []
+        if data is None:
+            return default
+        if isinstance(data, (list, dict)):
+            return data
+        try:
+            return json.loads(data)
+        except (json.JSONDecodeError, TypeError) as e:
+            log.warning("knowledge.json_parse_error",
+                        data=str(data)[:80], error=str(e))
+            return default
 
     def _table_for_type(self, entity_type: str) -> Optional[str]:
         mapping = {

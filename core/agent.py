@@ -282,6 +282,9 @@ class NexusAgent:
         knowledge_decay_days = self.config.get("knowledge", {}).get("confidence_decay_days", 30)
         self.knowledge.decay_confidence(max_age_days=knowledge_decay_days)
 
+        # Close knowledge engine database connection
+        self.knowledge.close()
+
         # Stop exploration if active
         if self.explorer.active:
             findings = self.explorer.stop_exploration()

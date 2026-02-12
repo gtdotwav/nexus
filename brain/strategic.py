@@ -413,11 +413,12 @@ class StrategicBrain:
         supplies = snapshot.get("supplies", {})
         session = snapshot.get("session", {})
 
-        pos = char.get("position", {})
+        pos = char.get("position") or {}
+        pos_str = f"({pos.get('x', '?')},{pos.get('y', '?')},{pos.get('z', '?')})" if pos else "(?,?,?)"
         lines = [
             f"[GAME STATE @ {time.strftime('%H:%M:%S')}]",
             f"HP:{char.get('hp_percent', 0)}% Mana:{char.get('mana_percent', 0)}% "
-            f"Pos:({pos.get('x', 0)},{pos.get('y', 0)},{pos.get('z', 7)})",
+            f"Pos:{pos_str}",
             f"Mode:{combat.get('mode', '?')} Threat:{combat.get('threat_level', '?')} "
             f"Target:{combat.get('current_target') or '-'}",
         ]
