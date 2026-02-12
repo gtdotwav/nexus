@@ -1,0 +1,150 @@
+# NEXUS Agent - Master Configuration
+# Game: Tibia
+
+agent:
+  name: "NEXUS"
+  version: "0.1.0"
+  game: "tibia"
+  character_name: "YOUR_CHARACTER_NAME"
+  log_level: "INFO"
+
+# Claude API Configuration
+ai:
+  provider: "anthropic"
+  model_strategic: "claude-sonnet-4-5-20250929"  # Strategic brain (fast + smart)
+  model_skill_creation: "claude-sonnet-4-5-20250929"  # Skill creation/improvement
+  model_quick: "claude-haiku-4-5-20251001"  # Quick decisions (cheap + fast)
+  max_tokens: 1024
+  temperature: 0.3  # Low temperature for consistent decisions
+  strategic_cycle_seconds: 3  # How often to query strategic brain
+  api_key_env: "ANTHROPIC_API_KEY"  # Read from environment variable
+
+# Screen Capture Configuration
+perception:
+  capture:
+    fps: 30
+    monitor_index: 0  # Primary monitor
+    backend: "dxcam"  # dxcam (Windows) | mss (cross-platform)
+
+  # Game window regions (pixel coordinates - calibrate on first run)
+  # These are relative to the game window position
+  regions:
+    hp_bar: {x: 0, y: 0, w: 130, h: 11}
+    mana_bar: {x: 0, y: 14, w: 130, h: 11}
+    game_screen: {x: 0, y: 0, w: 480, h: 352}
+    minimap: {x: 0, y: 0, w: 106, h: 109}
+    battle_list: {x: 0, y: 0, w: 156, h: 200}
+    chat_window: {x: 0, y: 0, w: 480, h: 120}
+    inventory: {x: 0, y: 0, w: 176, h: 400}
+
+  # OCR Settings
+  ocr:
+    engine: "easyocr"
+    languages: ["en"]
+    gpu: true
+
+  # Sprite/Template Matching
+  templates:
+    directory: "assets/templates/tibia/"
+    confidence_threshold: 0.85
+
+# Reactive Brain Configuration
+reactive:
+  tick_rate_ms: 25  # 40 ticks per second
+
+  healing:
+    critical_hp_percent: 30
+    medium_hp_percent: 60
+    mana_restore_percent: 40
+
+    # Spell priority (highest priority first)
+    spells:
+      - name: "exura vita"
+        hp_threshold: 30
+        mana_cost: 160
+        cooldown_ms: 1000
+      - name: "exura gran"
+        hp_threshold: 55
+        mana_cost: 100
+        cooldown_ms: 1000
+      - name: "exura"
+        hp_threshold: 75
+        mana_cost: 25
+        cooldown_ms: 1000
+
+    potions:
+      - type: "great_health_potion"
+        hp_threshold: 40
+        cooldown_ms: 1000
+      - type: "great_mana_potion"
+        mana_threshold: 50
+        cooldown_ms: 1000
+
+  anti_pk:
+    enabled: true
+    action: "flee_to_depot"
+    whitelist: []
+    threat_detection_radius: 8  # SQMs
+
+  # Hotkey mappings (customize per character)
+  # Map spell/action names → keyboard keys
+  hotkeys:
+    "exura": "f1"
+    "exura gran": "f2"
+    "exura vita": "f3"
+    "exori": "f4"
+    "exori gran": "f5"
+    "exori min": "f6"
+    "great_health_potion": "f7"
+    "great_mana_potion": "f8"
+    "exeta res": "f9"         # Challenge/taunt
+    "utani hur": "f10"        # Haste for fleeing
+    # Add custom mappings:
+    # "utani gran hur": "f11"
+    # "exura gran mas res": "f12"
+
+# Input Simulation (Anti-Detection)
+input:
+  humanization:
+    enabled: true
+    mouse_speed_range: [0.3, 0.8]  # seconds for full screen traverse
+    click_hold_range: [0.05, 0.15]  # seconds
+    key_hold_range: [0.05, 0.12]    # seconds
+    coordinate_noise_std: 2.0        # pixels gaussian std
+    inter_action_delay: [0.08, 0.25] # seconds between actions
+
+  # Session control — PLAYER decides when to stop, not the agent.
+  # Set auto_breaks to true ONLY if you want anti-detection breaks.
+  session:
+    auto_breaks: false                  # Player controls session length
+    # If auto_breaks is true, these settings apply:
+    break_interval_minutes: [45, 90]
+    break_duration_minutes: [2, 8]
+
+# Skill System
+skills:
+  directory: "skills/"
+  auto_create: true
+  auto_improve: true
+  improvement_threshold: 80  # Score below this triggers improvement
+  test_duration_minutes: 5   # Duration for skill testing
+  max_iterations: 5          # Max improvement attempts per cycle
+
+# Performance Tracking
+tracking:
+  enabled: true
+  database: "data/sessions.db"
+  metrics:
+    - xp_per_hour
+    - profit_per_hour
+    - deaths_per_hour
+    - supply_efficiency
+    - uptime_percent
+  snapshot_interval_seconds: 60
+
+# Dashboard
+dashboard:
+  enabled: false
+  host: "127.0.0.1"
+  port: 8420
+  websocket_update_ms: 500
