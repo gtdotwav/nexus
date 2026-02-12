@@ -14,7 +14,7 @@
 
 # ─── CONFIG ──────────────────────────────────────────
 
-NEXUS_VERSION="0.5.1"
+NEXUS_VERSION="0.5.2"
 NEXUS_DIR="$HOME/NEXUS"
 NEXUS_REPO="https://github.com/gtdotwav/nexus.git"
 MIN_PYTHON_MAJOR=3
@@ -283,9 +283,12 @@ step_python() {
         die "Erro ao instalar Python via Homebrew (exit $brew_exit)." "Instala manualmente: https://python.org/downloads/"
     fi
 
-    # Re-search after install
-    for cmd in python3.12 python3; do
-        if command -v "$cmd" &>/dev/null; then
+    # Re-search after install — include Homebrew's direct paths in case
+    # the shell hash table hasn't refreshed
+    hash -r 2>/dev/null  # Force shell to re-scan PATH
+
+    for cmd in python3.12 python3 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3 /usr/local/bin/python3.12 /usr/local/bin/python3; do
+        if [[ -x "$cmd" ]] || command -v "$cmd" &>/dev/null; then
             if check_python_version "$cmd"; then
                 PYTHON_CMD="$cmd"
                 break
@@ -393,45 +396,79 @@ step_download() {
 # ─── STEP 6: Install dependencies ───────────────────
 
 step_deps() {
-    info "Instalando dependencias (pode demorar 2-3 min)..."
+    local VENV_DIR="$NEXUS_DIR/.venv"
 
-    # Verify pip works
-    if ! "$PYTHON_CMD" -m pip --version &>/dev/null; then
-        warn "pip nao encontrado, tentando instalar..."
-        "$PYTHON_CMD" -m ensurepip --upgrade 2>/dev/null || true
-        if ! "$PYTHON_CMD" -m pip --version &>/dev/null; then
-            die "pip nao funciona com $PYTHON_CMD." "Reinstala Python: brew reinstall python@3.12"
-        fi
+    # ── Create virtual environment ──
+    # Python 3.12+ via Homebrew is "externally managed" (PEP 668).
+    # pip install outside a venv is BLOCKED by design.
+    # A venv is the ONLY correct approach — not --break-system-packages.
+    info "Criando ambiente virtual Python..."
+
+    if [[ -d "$VENV_DIR" ]]; then
+        # Existing venv — recreate cleanly to avoid stale packages
+        "$PYTHON_CMD" -m venv --clear "$VENV_DIR" 2>&1 || {
+            warn "Recriacao do venv falhou, removendo e tentando de novo..."
+            rm -rf "$VENV_DIR"
+            "$PYTHON_CMD" -m venv "$VENV_DIR" 2>&1
+        }
+    else
+        "$PYTHON_CMD" -m venv "$VENV_DIR" 2>&1
     fi
 
-    # Upgrade pip (show if it fails)
-    "$PYTHON_CMD" -m pip install --upgrade pip --quiet 2>/dev/null || warn "Upgrade do pip falhou (continuando...)"
+    # Validate venv was created and works
+    if [[ ! -f "$VENV_DIR/bin/python" ]]; then
+        die "Falha ao criar ambiente virtual." \
+            "Tenta manualmente: $PYTHON_CMD -m venv $VENV_DIR"
+    fi
+
+    # Switch ALL subsequent operations to the venv Python/pip
+    PYTHON_CMD="$VENV_DIR/bin/python"
+    local PIP_CMD="$VENV_DIR/bin/pip"
+
+    if ! "$PYTHON_CMD" -c "import sys; sys.exit(0)" 2>/dev/null; then
+        die "Python do ambiente virtual nao funciona." \
+            "Deleta $VENV_DIR e roda o instalador de novo."
+    fi
+
+    ok "Ambiente virtual criado"
+
+    # ── Install dependencies ──
+    info "Instalando dependencias (pode demorar 2-3 min)..."
+
+    # Upgrade pip inside venv (safe — no PEP 668 here)
+    "$PIP_CMD" install --upgrade pip --quiet 2>/dev/null || warn "Upgrade do pip falhou (continuando...)"
 
     # Install from pyproject.toml
     local pip_ok=false
-    if "$PYTHON_CMD" -m pip install -e . --quiet 2>&1; then
-        pip_ok=true
-    else
+    local pip_output=""
+
+    pip_output=$("$PIP_CMD" install -e . --quiet 2>&1) && pip_ok=true
+
+    if [[ "$pip_ok" != "true" ]]; then
         warn "Modo editavel falhou, tentando instalacao normal..."
-        if "$PYTHON_CMD" -m pip install . --quiet 2>&1; then
-            pip_ok=true
-        fi
+        pip_output=$("$PIP_CMD" install . --quiet 2>&1) && pip_ok=true
     fi
 
     if [[ "$pip_ok" != "true" ]]; then
-        die "Instalacao das dependencias falhou." "Verifica se o pyproject.toml esta correto."
+        fail "Instalacao das dependencias falhou."
+        echo ""
+        echo "  ─── pip output ───"
+        echo "$pip_output" | tail -20 | sed 's/^/  /'
+        echo "  ──────────────────"
+        echo ""
+        die "Erro no pip install." "Tenta manualmente: cd $NEXUS_DIR && $PIP_CMD install -e ."
     fi
 
-    # macOS-specific extras
-    "$PYTHON_CMD" -m pip install mss --quiet 2>/dev/null || warn "mss (screen capture) falhou"
+    # macOS-specific extras (inside venv — no PEP 668 issue)
+    "$PIP_CMD" install mss --quiet 2>/dev/null || warn "mss (screen capture) falhou"
 
-    if "$PYTHON_CMD" -m pip install pyobjc-framework-Quartz --quiet 2>/dev/null; then
+    if "$PIP_CMD" install pyobjc-framework-Quartz --quiet 2>/dev/null; then
         ok "Dependencias instaladas (com captura nativa macOS)"
     else
         ok "Dependencias instaladas (captura via mss)"
     fi
 
-    # Verify core imports work
+    # Verify core imports work inside the venv
     if ! "$PYTHON_CMD" -c "import mss" 2>/dev/null; then
         warn "Modulo mss nao importou corretamente — captura de tela pode falhar"
     fi
@@ -466,28 +503,42 @@ step_config() {
 # ─── STEP 8: Create launcher shortcuts ──────────────
 
 step_shortcuts() {
-    # Resolve the actual Python path to bake into launcher
-    local python_path
-    python_path=$(command -v "$PYTHON_CMD" 2>/dev/null || echo "python3")
+    local venv_dir="$NEXUS_DIR/.venv"
 
     # Create INICIAR_MAC.command in NEXUS directory
-    cat > "$NEXUS_DIR/INICIAR_MAC.command" << SCRIPT
+    # CRITICAL: Must activate the venv before running NEXUS.
+    # Without this, Python won't find any installed packages.
+    cat > "$NEXUS_DIR/INICIAR_MAC.command" << 'LAUNCHER_EOF'
 #!/bin/bash
-cd "\$(dirname "\$0")"
+cd "$(dirname "$0")" || exit 1
 echo ""
-echo -e "  \\033[0;36mIniciando NEXUS...\\033[0m"
-echo -e "  \\033[2mAbre o Tibia e loga no teu personagem antes!\\033[0m"
+echo -e "  \033[0;36mIniciando NEXUS...\033[0m"
+echo -e "  \033[2mAbre o Tibia e loga no teu personagem antes!\033[0m"
 echo ""
 
-# Use the Python that was found during installation
-PYTHON="${python_path}"
+NEXUS_DIR="$(pwd)"
+VENV_DIR="$NEXUS_DIR/.venv"
 
-if command -v nexus &>/dev/null; then
-    nexus start
-elif "\$PYTHON" -m nexus_cli start 2>/dev/null; then
+# Activate virtual environment
+if [[ -f "$VENV_DIR/bin/activate" ]]; then
+    source "$VENV_DIR/bin/activate"
+else
+    echo "  ERRO: Ambiente virtual nao encontrado em $VENV_DIR"
+    echo "  Roda o instalador de novo: bash scripts/install_macos.sh"
+    echo ""
+    echo "  Pressione Enter para fechar."
+    read -r </dev/tty 2>/dev/null || true
+    exit 1
+fi
+
+PYTHON="$VENV_DIR/bin/python"
+
+if [[ -x "$VENV_DIR/bin/nexus" ]]; then
+    "$VENV_DIR/bin/nexus" start
+elif "$PYTHON" -m nexus_cli start 2>/dev/null; then
     true
 elif [[ -f launcher.py ]]; then
-    "\$PYTHON" launcher.py
+    "$PYTHON" launcher.py
 else
     echo "  ERRO: Nao encontrou o NEXUS. Roda o instalador de novo."
 fi
@@ -495,18 +546,18 @@ fi
 echo ""
 echo "  NEXUS encerrado. Pressione Enter para fechar."
 read -r </dev/tty 2>/dev/null || true
-SCRIPT
+LAUNCHER_EOF
     chmod +x "$NEXUS_DIR/INICIAR_MAC.command"
     xattr -d com.apple.quarantine "$NEXUS_DIR/INICIAR_MAC.command" 2>/dev/null || true
 
     # Desktop shortcut
     local desktop="$HOME/Desktop"
     if [[ -d "$desktop" ]]; then
-        cat > "$desktop/NEXUS Agent.command" << SCRIPT
+        cat > "$desktop/NEXUS Agent.command" << DESKTOP_EOF
 #!/bin/bash
 cd "${NEXUS_DIR}" || exit 1
 exec bash "${NEXUS_DIR}/INICIAR_MAC.command"
-SCRIPT
+DESKTOP_EOF
         chmod +x "$desktop/NEXUS Agent.command"
         xattr -d com.apple.quarantine "$desktop/NEXUS Agent.command" 2>/dev/null || true
         ok "Atalho criado na Area de Trabalho"
@@ -520,7 +571,13 @@ SCRIPT
 step_verify() {
     local errors=0
 
-    # Check Python
+    # Check venv exists
+    if [[ ! -d "$NEXUS_DIR/.venv/bin" ]]; then
+        fail "Ambiente virtual nao encontrado em .venv/"
+        errors=$((errors + 1))
+    fi
+
+    # Check Python (should be the venv python by this point)
     if ! "$PYTHON_CMD" -c "import sys; sys.exit(0)" 2>/dev/null; then
         fail "Python ($PYTHON_CMD) nao funciona"
         errors=$((errors + 1))
@@ -534,9 +591,14 @@ step_verify() {
         fi
     done
 
-    # Check core import
+    # Check core imports inside venv
     if ! "$PYTHON_CMD" -c "import mss" 2>/dev/null; then
         warn "mss nao importa — captura de tela pode nao funcionar"
+    fi
+
+    if ! "$PYTHON_CMD" -c "import structlog, yaml, click" 2>/dev/null; then
+        fail "Dependencias core nao importam (structlog/yaml/click)"
+        errors=$((errors + 1))
     fi
 
     # Check launcher exists and is executable
@@ -640,7 +702,7 @@ main() {
     step_download
     echo ""
 
-    echo -e "  ${BOLD}[6/8] Instalando dependencias...${NC}"
+    echo -e "  ${BOLD}[6/8] Ambiente virtual + dependencias...${NC}"
     step_deps
     echo ""
 
@@ -671,12 +733,13 @@ main() {
     echo -e "  ${GREEN}═══════════════════════════════════════════${NC}"
     echo ""
     echo -e "  Arquivos em: ${CYAN}$NEXUS_DIR${NC}"
+    echo -e "  Ambiente:    ${CYAN}$NEXUS_DIR/.venv${NC}"
     echo ""
     echo -e "  ${BOLD}COMO USAR:${NC}"
     echo -e "  1. Edita ${CYAN}config/settings.yaml${NC} com teu personagem e hotkeys"
     echo -e "  2. Abre o Tibia e loga"
     echo -e "  3. Double-click em ${CYAN}\"NEXUS Agent\"${NC} na Area de Trabalho"
-    echo -e "     (ou roda ${CYAN}nexus start${NC} no terminal)"
+    echo -e "     (ou no terminal: ${CYAN}cd ~/NEXUS && source .venv/bin/activate && nexus start${NC})"
     echo ""
     echo -e "  ${BOLD}IA ESTRATEGICA (opcional):${NC}"
     echo -e "  ${CYAN}export ANTHROPIC_API_KEY=\"sua_chave\"${NC}"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════
-#  NEXUS — Instalador One-Click para macOS v0.5.1
+#  NEXUS — Instalador One-Click para macOS v0.5.2
 #
 #  COMO USAR:
 #    Opcao 1 (recomendado):
