@@ -166,23 +166,31 @@ class StrategicBrain:
         self.reasoning_engine = None     # ReasoningEngine instance
         self.knowledge = None            # KnowledgeEngine instance
 
+        # Async lock for client initialization — prevents duplicate clients
+        # when multiple think() calls race during startup
+        self._client_lock = asyncio.Lock()
+
     async def _ensure_client(self) -> bool:
         if self.client:
             return True
-        try:
-            from anthropic import AsyncAnthropic
-            key = os.environ.get(self.config.get("api_key_env", "ANTHROPIC_API_KEY"))
-            if not key:
-                log.error("strategic.no_api_key")
+        async with self._client_lock:
+            # Double-check after acquiring lock (another coroutine may have initialized)
+            if self.client:
+                return True
+            try:
+                from anthropic import AsyncAnthropic
+                key = os.environ.get(self.config.get("api_key_env", "ANTHROPIC_API_KEY"))
+                if not key:
+                    log.error("strategic.no_api_key")
+                    return False
+                self.client = AsyncAnthropic(
+                    api_key=key,
+                    timeout=self._api_timeout,
+                )
+                return True
+            except ImportError:
+                log.error("strategic.anthropic_not_installed")
                 return False
-            self.client = AsyncAnthropic(
-                api_key=key,
-                timeout=self._api_timeout,
-            )
-            return True
-        except ImportError:
-            log.error("strategic.anthropic_not_installed")
-            return False
 
     def _cb_check(self) -> bool:
         """Check circuit breaker. Returns True if request is allowed."""
@@ -215,8 +223,10 @@ class StrategicBrain:
         """Record API failure — may trip circuit breaker."""
         now = time.time()
 
-        # Reset counter if outside failure window
-        if now - self._cb_last_failure > self._cb_window:
+        # Reset counter if gap between CONSECUTIVE failures exceeds window.
+        # This correctly implements a sliding window: failures must be clustered
+        # within _cb_window seconds to trip the breaker.
+        if self._cb_last_failure > 0 and (now - self._cb_last_failure) > self._cb_window:
             self._cb_failures = 0
 
         self._cb_failures += 1
@@ -336,10 +346,17 @@ class StrategicBrain:
 
         # Check cache (avoid identical consecutive calls)
         cache_key = hashlib.sha256(context.encode()).hexdigest()[:32]
+        now_ts = time.time()
         if cache_key in self._cache:
             cached_time, cached_result = self._cache[cache_key]
-            if time.time() - cached_time < self._cache_ttl:
+            if now_ts - cached_time < self._cache_ttl:
                 return cached_result
+
+        # Evict stale cache entries (prevent unbounded memory growth)
+        if len(self._cache) > 50:
+            stale_keys = [k for k, (t, _) in self._cache.items() if now_ts - t > self._cache_ttl * 10]
+            for k in stale_keys:
+                del self._cache[k]
 
         start = time.perf_counter()
 

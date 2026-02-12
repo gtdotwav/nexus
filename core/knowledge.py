@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 import structlog
 from pathlib import Path
@@ -49,7 +50,11 @@ class KnowledgeEngine:
         if db_path != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn = sqlite3.connect(db_path)
+        # Thread-safety: SQLite connections are NOT safe to share across threads.
+        # check_same_thread=False allows multi-thread access, but we MUST serialize
+        # all operations with a Lock to prevent concurrent writes/reads.
+        self._db_lock = threading.RLock()
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
@@ -65,9 +70,15 @@ class KnowledgeEngine:
                  locations=stats["locations"],
                  mechanics=stats["mechanics"])
 
+    @property
+    def db(self):
+        """Thread-safe database access. Use with `with self._db_lock:` around operations."""
+        return self.conn
+
     def _create_tables(self):
         """Create all knowledge tables if they don't exist."""
-        self.conn.executescript("""
+        with self._db_lock:
+            self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS learned_creatures (
                 name TEXT PRIMARY KEY,
                 hp_estimate INTEGER DEFAULT 0,
@@ -141,8 +152,8 @@ class KnowledgeEngine:
                 reason TEXT DEFAULT '',
                 timestamp TEXT
             );
-        """)
-        self.conn.commit()
+            """)
+            self.conn.commit()
 
     # ═══════════════════════════════════════════════════════
     #  LEARN — Upsert with intelligent merge
@@ -154,288 +165,323 @@ class KnowledgeEngine:
         Re-observations boost confidence. Conflicting data uses weighted merge.
         """
         now = _now()
-        existing = self.get_creature(name)
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_creatures WHERE name=?", (name,)).fetchone()
+            existing = dict(row) if row else None
 
-        if existing:
-            # Merge observations with existing knowledge
-            updates = {}
-            for key, value in observations.items():
-                if key in ("encounters", "kills", "deaths_from"):
-                    updates[key] = existing.get(key, 0) + value
-                elif key == "loot_items" and value:
-                    old_loot = self._safe_json_load(existing.get("loot_items"), [])
-                    new_items = value if isinstance(value, list) else self._safe_json_load(value, [])
-                    merged = list(set(old_loot + new_items))
-                    updates["loot_items"] = json.dumps(merged)
-                elif value is not None and value != "":
-                    updates[key] = value
+            if existing:
+                # Merge observations with existing knowledge
+                updates = {}
+                for key, value in observations.items():
+                    if key in ("encounters", "kills", "deaths_from"):
+                        updates[key] = existing.get(key, 0) + value
+                    elif key == "loot_items" and value:
+                        old_loot = self._safe_json_load(existing.get("loot_items"), [])
+                        new_items = value if isinstance(value, list) else self._safe_json_load(value, [])
+                        merged = list(set(old_loot + new_items))
+                        updates["loot_items"] = json.dumps(merged)
+                    elif value is not None and value != "":
+                        updates[key] = value
 
-            # Boost confidence on re-observation
-            old_conf = existing.get("confidence", 0.1)
-            boost = min(0.15, 0.05 * updates.get("encounters", 0) + 0.03)
-            new_conf = min(1.0, old_conf + boost)
-            updates["confidence"] = new_conf
-            updates["last_seen"] = now
+                # Boost confidence on re-observation
+                old_conf = existing.get("confidence", 0.1)
+                boost = min(0.15, 0.05 * updates.get("encounters", 0) + 0.03)
+                new_conf = min(1.0, old_conf + boost)
+                updates["confidence"] = new_conf
+                updates["last_seen"] = now
 
-            if old_conf != new_conf:
-                self._log_confidence("creature", name, old_conf, new_conf, "re-observation")
+                if old_conf != new_conf:
+                    self.conn.execute(
+                        "INSERT INTO confidence_history (entity_type, entity_name, old_confidence, new_confidence, reason, timestamp) VALUES (?,?,?,?,?,?)",
+                        ("creature", name, old_conf, new_conf, "re-observation", _now()),
+                    )
 
-            set_clause = ", ".join(f"{k}=?" for k in updates.keys())
-            values = list(updates.values()) + [name]
-            self.conn.execute(
-                f"UPDATE learned_creatures SET {set_clause} WHERE name=?",
-                values,
-            )
-        else:
-            # New creature
-            obs = {
-                "name": name,
-                "hp_estimate": observations.get("hp_estimate", 0),
-                "damage_estimate": observations.get("damage_estimate", 0),
-                "loot_items": json.dumps(observations.get("loot_items", [])) if isinstance(observations.get("loot_items"), list) else observations.get("loot_items", "[]"),
-                "location": observations.get("location", ""),
-                "danger_level": observations.get("danger_level", "unknown"),
-                "can_kill": 1 if observations.get("can_kill") else 0,
-                "confidence": observations.get("confidence", 0.1),
-                "encounters": observations.get("encounters", 1),
-                "kills": observations.get("kills", 0),
-                "deaths_from": observations.get("deaths_from", 0),
-                "first_seen": now,
-                "last_seen": now,
-                "notes": json.dumps(observations.get("notes", {})) if isinstance(observations.get("notes"), dict) else observations.get("notes", "{}"),
-            }
-            cols = ", ".join(obs.keys())
-            placeholders = ", ".join("?" for _ in obs)
-            self.conn.execute(
-                f"INSERT INTO learned_creatures ({cols}) VALUES ({placeholders})",
-                list(obs.values()),
-            )
-            self._log_confidence("creature", name, 0.0, obs["confidence"], "first_observation")
+                set_clause = ", ".join(f"{k}=?" for k in updates.keys())
+                values = list(updates.values()) + [name]
+                self.conn.execute(
+                    f"UPDATE learned_creatures SET {set_clause} WHERE name=?",
+                    values,
+                )
+            else:
+                # New creature
+                obs = {
+                    "name": name,
+                    "hp_estimate": observations.get("hp_estimate", 0),
+                    "damage_estimate": observations.get("damage_estimate", 0),
+                    "loot_items": json.dumps(observations.get("loot_items", [])) if isinstance(observations.get("loot_items"), list) else observations.get("loot_items", "[]"),
+                    "location": observations.get("location", ""),
+                    "danger_level": observations.get("danger_level", "unknown"),
+                    "can_kill": 1 if observations.get("can_kill") else 0,
+                    "confidence": observations.get("confidence", 0.1),
+                    "encounters": observations.get("encounters", 1),
+                    "kills": observations.get("kills", 0),
+                    "deaths_from": observations.get("deaths_from", 0),
+                    "first_seen": now,
+                    "last_seen": now,
+                    "notes": json.dumps(observations.get("notes", {})) if isinstance(observations.get("notes"), dict) else observations.get("notes", "{}"),
+                }
+                cols = ", ".join(obs.keys())
+                placeholders = ", ".join("?" for _ in obs)
+                self.conn.execute(
+                    f"INSERT INTO learned_creatures ({cols}) VALUES ({placeholders})",
+                    list(obs.values()),
+                )
+                self.conn.execute(
+                    "INSERT INTO confidence_history (entity_type, entity_name, old_confidence, new_confidence, reason, timestamp) VALUES (?,?,?,?,?,?)",
+                    ("creature", name, 0.0, obs["confidence"], "first_observation", _now()),
+                )
 
-        self.conn.commit()
-        return self.get_creature(name)
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM learned_creatures WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else {}
 
     def learn_spell(self, name: str, **observations) -> dict:
         """Learn or update knowledge about a spell/action."""
         now = _now()
-        existing = self.get_spell(name)
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_spells WHERE name=?", (name,)).fetchone()
+            existing = dict(row) if row else None
 
-        if existing:
-            updates = {}
-            for key, value in observations.items():
-                if key == "times_used":
-                    updates[key] = existing.get(key, 0) + value
-                elif value is not None and value != "":
-                    updates[key] = value
+            if existing:
+                updates = {}
+                for key, value in observations.items():
+                    if key == "times_used":
+                        updates[key] = existing.get(key, 0) + value
+                    elif value is not None and value != "":
+                        updates[key] = value
 
-            old_conf = existing.get("confidence", 0.1)
-            new_conf = min(1.0, old_conf + 0.1)
-            updates["confidence"] = new_conf
-            updates["last_used"] = now
+                old_conf = existing.get("confidence", 0.1)
+                new_conf = min(1.0, old_conf + 0.1)
+                updates["confidence"] = new_conf
+                updates["last_used"] = now
 
-            if old_conf != new_conf:
-                self._log_confidence("spell", name, old_conf, new_conf, "re-observation")
+                if old_conf != new_conf:
+                    self.conn.execute(
+                        "INSERT INTO confidence_history (entity_type, entity_name, old_confidence, new_confidence, reason, timestamp) VALUES (?,?,?,?,?,?)",
+                        ("spell", name, old_conf, new_conf, "re-observation", _now()),
+                    )
 
-            set_clause = ", ".join(f"{k}=?" for k in updates.keys())
-            values = list(updates.values()) + [name]
-            self.conn.execute(f"UPDATE learned_spells SET {set_clause} WHERE name=?", values)
-        else:
-            obs = {
-                "name": name,
-                "words": observations.get("words", ""),
-                "mana_cost": observations.get("mana_cost", 0),
-                "effect": observations.get("effect", ""),
-                "hotkey": observations.get("hotkey", ""),
-                "cooldown_ms": observations.get("cooldown_ms", 0),
-                "confidence": observations.get("confidence", 0.1),
-                "times_used": observations.get("times_used", 0),
-                "last_used": now,
-            }
-            cols = ", ".join(obs.keys())
-            placeholders = ", ".join("?" for _ in obs)
-            self.conn.execute(f"INSERT INTO learned_spells ({cols}) VALUES ({placeholders})", list(obs.values()))
+                set_clause = ", ".join(f"{k}=?" for k in updates.keys())
+                values = list(updates.values()) + [name]
+                self.conn.execute(f"UPDATE learned_spells SET {set_clause} WHERE name=?", values)
+            else:
+                obs = {
+                    "name": name,
+                    "words": observations.get("words", ""),
+                    "mana_cost": observations.get("mana_cost", 0),
+                    "effect": observations.get("effect", ""),
+                    "hotkey": observations.get("hotkey", ""),
+                    "cooldown_ms": observations.get("cooldown_ms", 0),
+                    "confidence": observations.get("confidence", 0.1),
+                    "times_used": observations.get("times_used", 0),
+                    "last_used": now,
+                }
+                cols = ", ".join(obs.keys())
+                placeholders = ", ".join("?" for _ in obs)
+                self.conn.execute(f"INSERT INTO learned_spells ({cols}) VALUES ({placeholders})", list(obs.values()))
 
-        self.conn.commit()
-        return self.get_spell(name)
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM learned_spells WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else {}
 
     def learn_item(self, name: str, **observations) -> dict:
         """Learn or update knowledge about an item."""
         now = _now()
-        existing = self.get_item(name)
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_items WHERE name=?", (name,)).fetchone()
+            existing = dict(row) if row else None
 
-        if existing:
-            updates = {}
-            for key, value in observations.items():
-                if key == "times_seen":
-                    updates[key] = existing.get(key, 0) + value
-                elif value is not None and value != "":
-                    updates[key] = value
+            if existing:
+                updates = {}
+                for key, value in observations.items():
+                    if key == "times_seen":
+                        updates[key] = existing.get(key, 0) + value
+                    elif value is not None and value != "":
+                        updates[key] = value
 
-            old_conf = existing.get("confidence", 0.1)
-            new_conf = min(1.0, old_conf + 0.08)
-            updates["confidence"] = new_conf
-            updates["last_seen"] = now
+                old_conf = existing.get("confidence", 0.1)
+                new_conf = min(1.0, old_conf + 0.08)
+                updates["confidence"] = new_conf
+                updates["last_seen"] = now
 
-            set_clause = ", ".join(f"{k}=?" for k in updates.keys())
-            values = list(updates.values()) + [name]
-            self.conn.execute(f"UPDATE learned_items SET {set_clause} WHERE name=?", values)
-        else:
-            obs = {
-                "name": name,
-                "item_type": observations.get("item_type", "unknown"),
-                "effect": observations.get("effect", ""),
-                "value_estimate": observations.get("value_estimate", 0),
-                "where_found": observations.get("where_found", ""),
-                "confidence": observations.get("confidence", 0.1),
-                "times_seen": observations.get("times_seen", 1),
-                "first_seen": now,
-                "last_seen": now,
-            }
-            cols = ", ".join(obs.keys())
-            placeholders = ", ".join("?" for _ in obs)
-            self.conn.execute(f"INSERT INTO learned_items ({cols}) VALUES ({placeholders})", list(obs.values()))
+                set_clause = ", ".join(f"{k}=?" for k in updates.keys())
+                values = list(updates.values()) + [name]
+                self.conn.execute(f"UPDATE learned_items SET {set_clause} WHERE name=?", values)
+            else:
+                obs = {
+                    "name": name,
+                    "item_type": observations.get("item_type", "unknown"),
+                    "effect": observations.get("effect", ""),
+                    "value_estimate": observations.get("value_estimate", 0),
+                    "where_found": observations.get("where_found", ""),
+                    "confidence": observations.get("confidence", 0.1),
+                    "times_seen": observations.get("times_seen", 1),
+                    "first_seen": now,
+                    "last_seen": now,
+                }
+                cols = ", ".join(obs.keys())
+                placeholders = ", ".join("?" for _ in obs)
+                self.conn.execute(f"INSERT INTO learned_items ({cols}) VALUES ({placeholders})", list(obs.values()))
 
-        self.conn.commit()
-        return self.get_item(name)
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM learned_items WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else {}
 
     def learn_location(self, name: str, **observations) -> dict:
         """Learn or update knowledge about a location."""
         now = _now()
-        existing = self.get_location(name)
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_locations WHERE name=?", (name,)).fetchone()
+            existing = dict(row) if row else None
 
-        if existing:
-            updates = {}
-            for key, value in observations.items():
-                if key == "visits":
-                    updates[key] = existing.get(key, 0) + value
-                elif key in ("connections", "npcs", "creatures") and value:
-                    # Merge lists — safe parse from DB + input
-                    old_list = self._safe_json_load(existing.get(key), [])
-                    new_list = value if isinstance(value, list) else self._safe_json_load(value, [])
-                    merged = list(set(old_list + new_list))
-                    updates[key] = json.dumps(merged)
-                elif value is not None and value != "":
-                    updates[key] = value
+            if existing:
+                updates = {}
+                for key, value in observations.items():
+                    if key == "visits":
+                        updates[key] = existing.get(key, 0) + value
+                    elif key in ("connections", "npcs", "creatures") and value:
+                        # Merge lists — safe parse from DB + input
+                        old_list = self._safe_json_load(existing.get(key), [])
+                        new_list = value if isinstance(value, list) else self._safe_json_load(value, [])
+                        merged = list(set(old_list + new_list))
+                        updates[key] = json.dumps(merged)
+                    elif value is not None and value != "":
+                        updates[key] = value
 
-            old_conf = existing.get("confidence", 0.1)
-            new_conf = min(1.0, old_conf + 0.1)
-            updates["confidence"] = new_conf
-            updates["last_visit"] = now
+                old_conf = existing.get("confidence", 0.1)
+                new_conf = min(1.0, old_conf + 0.1)
+                updates["confidence"] = new_conf
+                updates["last_visit"] = now
 
-            set_clause = ", ".join(f"{k}=?" for k in updates.keys())
-            values = list(updates.values()) + [name]
-            self.conn.execute(f"UPDATE learned_locations SET {set_clause} WHERE name=?", values)
-        else:
-            obs = {
-                "name": name,
-                "description": observations.get("description", ""),
-                "coordinates": json.dumps(observations.get("coordinates", {})) if isinstance(observations.get("coordinates"), dict) else observations.get("coordinates", "{}"),
-                "connections": json.dumps(observations.get("connections", [])) if isinstance(observations.get("connections"), list) else observations.get("connections", "[]"),
-                "npcs": json.dumps(observations.get("npcs", [])) if isinstance(observations.get("npcs"), list) else observations.get("npcs", "[]"),
-                "creatures": json.dumps(observations.get("creatures", [])) if isinstance(observations.get("creatures"), list) else observations.get("creatures", "[]"),
-                "danger_level": observations.get("danger_level", "unknown"),
-                "confidence": observations.get("confidence", 0.1),
-                "visits": observations.get("visits", 1),
-                "last_visit": now,
-            }
-            cols = ", ".join(obs.keys())
-            placeholders = ", ".join("?" for _ in obs)
-            self.conn.execute(f"INSERT INTO learned_locations ({cols}) VALUES ({placeholders})", list(obs.values()))
+                set_clause = ", ".join(f"{k}=?" for k in updates.keys())
+                values = list(updates.values()) + [name]
+                self.conn.execute(f"UPDATE learned_locations SET {set_clause} WHERE name=?", values)
+            else:
+                obs = {
+                    "name": name,
+                    "description": observations.get("description", ""),
+                    "coordinates": json.dumps(observations.get("coordinates", {})) if isinstance(observations.get("coordinates"), dict) else observations.get("coordinates", "{}"),
+                    "connections": json.dumps(observations.get("connections", [])) if isinstance(observations.get("connections"), list) else observations.get("connections", "[]"),
+                    "npcs": json.dumps(observations.get("npcs", [])) if isinstance(observations.get("npcs"), list) else observations.get("npcs", "[]"),
+                    "creatures": json.dumps(observations.get("creatures", [])) if isinstance(observations.get("creatures"), list) else observations.get("creatures", "[]"),
+                    "danger_level": observations.get("danger_level", "unknown"),
+                    "confidence": observations.get("confidence", 0.1),
+                    "visits": observations.get("visits", 1),
+                    "last_visit": now,
+                }
+                cols = ", ".join(obs.keys())
+                placeholders = ", ".join("?" for _ in obs)
+                self.conn.execute(f"INSERT INTO learned_locations ({cols}) VALUES ({placeholders})", list(obs.values()))
 
-        self.conn.commit()
-        return self.get_location(name)
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM learned_locations WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else {}
 
     def learn_mechanic(self, name: str, **observations) -> dict:
         """Learn or update knowledge about a game mechanic."""
         now = _now()
-        existing = self.get_mechanic(name)
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_mechanics WHERE name=?", (name,)).fetchone()
+            existing = dict(row) if row else None
 
-        if existing:
-            updates = {}
-            for key, value in observations.items():
-                if value is not None and value != "":
-                    updates[key] = value
+            if existing:
+                updates = {}
+                for key, value in observations.items():
+                    if value is not None and value != "":
+                        updates[key] = value
 
-            old_conf = existing.get("confidence", 0.1)
-            new_conf = min(1.0, old_conf + 0.15)
-            updates["confidence"] = new_conf
+                old_conf = existing.get("confidence", 0.1)
+                new_conf = min(1.0, old_conf + 0.15)
+                updates["confidence"] = new_conf
 
-            set_clause = ", ".join(f"{k}=?" for k in updates.keys())
-            values = list(updates.values()) + [name]
-            self.conn.execute(f"UPDATE learned_mechanics SET {set_clause} WHERE name=?", values)
-        else:
-            obs = {
-                "name": name,
-                "category": observations.get("category", "unknown"),
-                "description": observations.get("description", ""),
-                "how_to": observations.get("how_to", ""),
-                "confidence": observations.get("confidence", 0.2),
-                "verified": 1 if observations.get("verified") else 0,
-                "discovered": now,
-            }
-            cols = ", ".join(obs.keys())
-            placeholders = ", ".join("?" for _ in obs)
-            self.conn.execute(f"INSERT INTO learned_mechanics ({cols}) VALUES ({placeholders})", list(obs.values()))
+                set_clause = ", ".join(f"{k}=?" for k in updates.keys())
+                values = list(updates.values()) + [name]
+                self.conn.execute(f"UPDATE learned_mechanics SET {set_clause} WHERE name=?", values)
+            else:
+                obs = {
+                    "name": name,
+                    "category": observations.get("category", "unknown"),
+                    "description": observations.get("description", ""),
+                    "how_to": observations.get("how_to", ""),
+                    "confidence": observations.get("confidence", 0.2),
+                    "verified": 1 if observations.get("verified") else 0,
+                    "discovered": now,
+                }
+                cols = ", ".join(obs.keys())
+                placeholders = ", ".join("?" for _ in obs)
+                self.conn.execute(f"INSERT INTO learned_mechanics ({cols}) VALUES ({placeholders})", list(obs.values()))
 
-        self.conn.commit()
-        return self.get_mechanic(name)
+            self.conn.commit()
+            row = self.conn.execute("SELECT * FROM learned_mechanics WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else {}
 
     # ═══════════════════════════════════════════════════════
     #  QUERY — Get knowledge back
     # ═══════════════════════════════════════════════════════
 
     def get_creature(self, name: str) -> Optional[dict]:
-        row = self.conn.execute("SELECT * FROM learned_creatures WHERE name=?", (name,)).fetchone()
-        return dict(row) if row else None
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_creatures WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else None
 
     def get_spell(self, name: str) -> Optional[dict]:
-        row = self.conn.execute("SELECT * FROM learned_spells WHERE name=?", (name,)).fetchone()
-        return dict(row) if row else None
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_spells WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else None
 
     def get_item(self, name: str) -> Optional[dict]:
-        row = self.conn.execute("SELECT * FROM learned_items WHERE name=?", (name,)).fetchone()
-        return dict(row) if row else None
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_items WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else None
 
     def get_location(self, name: str) -> Optional[dict]:
-        row = self.conn.execute("SELECT * FROM learned_locations WHERE name=?", (name,)).fetchone()
-        return dict(row) if row else None
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_locations WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else None
 
     def get_mechanic(self, name: str) -> Optional[dict]:
-        row = self.conn.execute("SELECT * FROM learned_mechanics WHERE name=?", (name,)).fetchone()
-        return dict(row) if row else None
+        with self._db_lock:
+            row = self.conn.execute("SELECT * FROM learned_mechanics WHERE name=?", (name,)).fetchone()
+            return dict(row) if row else None
 
     def get_known_creatures(self) -> list[dict]:
         """All known creatures sorted by confidence descending."""
-        rows = self.conn.execute(
-            "SELECT * FROM learned_creatures ORDER BY confidence DESC"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._db_lock:
+            rows = self.conn.execute(
+                "SELECT * FROM learned_creatures ORDER BY confidence DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_safe_creatures(self) -> list[dict]:
         """Creatures the agent can reliably kill (danger_level safe/moderate, can_kill=1)."""
-        rows = self.conn.execute(
-            "SELECT * FROM learned_creatures WHERE can_kill=1 AND danger_level IN ('safe', 'moderate') AND confidence >= 0.3 ORDER BY confidence DESC"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._db_lock:
+            rows = self.conn.execute(
+                "SELECT * FROM learned_creatures WHERE can_kill=1 AND danger_level IN ('safe', 'moderate') AND confidence >= 0.3 ORDER BY confidence DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_dangerous_creatures(self) -> list[dict]:
         """Creatures that are dangerous or have killed the agent."""
-        rows = self.conn.execute(
-            "SELECT * FROM learned_creatures WHERE danger_level IN ('dangerous', 'deadly') OR deaths_from > 0 ORDER BY deaths_from DESC"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._db_lock:
+            rows = self.conn.execute(
+                "SELECT * FROM learned_creatures WHERE danger_level IN ('dangerous', 'deadly') OR deaths_from > 0 ORDER BY deaths_from DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_known_spells(self) -> list[dict]:
-        rows = self.conn.execute("SELECT * FROM learned_spells ORDER BY confidence DESC").fetchall()
-        return [dict(r) for r in rows]
+        with self._db_lock:
+            rows = self.conn.execute("SELECT * FROM learned_spells ORDER BY confidence DESC").fetchall()
+            return [dict(r) for r in rows]
 
     def get_known_items(self) -> list[dict]:
-        rows = self.conn.execute("SELECT * FROM learned_items ORDER BY confidence DESC").fetchall()
-        return [dict(r) for r in rows]
+        with self._db_lock:
+            rows = self.conn.execute("SELECT * FROM learned_items ORDER BY confidence DESC").fetchall()
+            return [dict(r) for r in rows]
 
     def get_known_locations(self) -> list[dict]:
-        rows = self.conn.execute("SELECT * FROM learned_locations ORDER BY confidence DESC").fetchall()
-        return [dict(r) for r in rows]
+        with self._db_lock:
+            rows = self.conn.execute("SELECT * FROM learned_locations ORDER BY confidence DESC").fetchall()
+            return [dict(r) for r in rows]
 
     def get_nearby_knowledge(self, x: int, y: int, z: int, radius: int = 10) -> dict:
         """Get all knowledge relevant to a position."""
@@ -484,31 +530,37 @@ class KnowledgeEngine:
         if not table:
             return
 
-        row = self.conn.execute(f"SELECT confidence FROM {table} WHERE name=?", (name,)).fetchone()
-        if not row:
-            return
+        with self._db_lock:
+            row = self.conn.execute(f"SELECT confidence FROM {table} WHERE name=?", (name,)).fetchone()
+            if not row:
+                return
 
-        old_conf = row["confidence"]
-        new_conf = min(1.0, old_conf + amount)
-        self.conn.execute(f"UPDATE {table} SET confidence=? WHERE name=?", (new_conf, name))
-        self.conn.commit()
-        self._log_confidence(entity_type, name, old_conf, new_conf, reason)
+            old_conf = row["confidence"]
+            new_conf = min(1.0, old_conf + amount)
+            self.conn.execute(f"UPDATE {table} SET confidence=? WHERE name=?", (new_conf, name))
+            self.conn.commit()
+            self.conn.execute(
+                "INSERT INTO confidence_history (entity_type, entity_name, old_confidence, new_confidence, reason, timestamp) VALUES (?,?,?,?,?,?)",
+                (entity_type, name, old_conf, new_conf, reason, _now()),
+            )
+            self.conn.commit()
 
     def decay_confidence(self, max_age_days: int = 30):
         """Decay confidence for old knowledge that hasn't been re-observed."""
         cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - max_age_days * 86400))
 
-        for table, time_col in [
-            ("learned_creatures", "last_seen"),
-            ("learned_spells", "last_used"),
-            ("learned_items", "last_seen"),
-            ("learned_locations", "last_visit"),
-        ]:
-            self.conn.execute(
-                f"UPDATE {table} SET confidence = MAX(0.05, confidence * 0.95) WHERE {time_col} < ? AND confidence > 0.05",
-                (cutoff,),
-            )
-        self.conn.commit()
+        with self._db_lock:
+            for table, time_col in [
+                ("learned_creatures", "last_seen"),
+                ("learned_spells", "last_used"),
+                ("learned_items", "last_seen"),
+                ("learned_locations", "last_visit"),
+            ]:
+                self.conn.execute(
+                    f"UPDATE {table} SET confidence = MAX(0.05, confidence * 0.95) WHERE {time_col} < ? AND confidence > 0.05",
+                    (cutoff,),
+                )
+            self.conn.commit()
 
     # ═══════════════════════════════════════════════════════
     #  STATS & EXPORT
@@ -516,28 +568,29 @@ class KnowledgeEngine:
 
     def get_learning_stats(self) -> dict:
         """Summary statistics for TUI/dashboard display."""
-        def count(table):
-            return self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        with self._db_lock:
+            def count(table):
+                return self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
-        def avg_conf(table):
-            row = self.conn.execute(f"SELECT AVG(confidence) FROM {table}").fetchone()
-            return round(row[0] or 0, 2)
+            def avg_conf(table):
+                row = self.conn.execute(f"SELECT AVG(confidence) FROM {table}").fetchone()
+                return round(row[0] or 0, 2)
 
-        return {
-            "creatures": count("learned_creatures"),
-            "spells": count("learned_spells"),
-            "items": count("learned_items"),
-            "locations": count("learned_locations"),
-            "mechanics": count("learned_mechanics"),
-            "avg_confidence": {
-                "creatures": avg_conf("learned_creatures"),
-                "spells": avg_conf("learned_spells"),
-                "items": avg_conf("learned_items"),
-                "locations": avg_conf("learned_locations"),
-            },
-            "total_kills": self.conn.execute("SELECT COALESCE(SUM(kills), 0) FROM learned_creatures").fetchone()[0],
-            "total_deaths_from": self.conn.execute("SELECT COALESCE(SUM(deaths_from), 0) FROM learned_creatures").fetchone()[0],
-        }
+            return {
+                "creatures": count("learned_creatures"),
+                "spells": count("learned_spells"),
+                "items": count("learned_items"),
+                "locations": count("learned_locations"),
+                "mechanics": count("learned_mechanics"),
+                "avg_confidence": {
+                    "creatures": avg_conf("learned_creatures"),
+                    "spells": avg_conf("learned_spells"),
+                    "items": avg_conf("learned_items"),
+                    "locations": avg_conf("learned_locations"),
+                },
+                "total_kills": self.conn.execute("SELECT COALESCE(SUM(kills), 0) FROM learned_creatures").fetchone()[0],
+                "total_deaths_from": self.conn.execute("SELECT COALESCE(SUM(deaths_from), 0) FROM learned_creatures").fetchone()[0],
+            }
 
     def get_knowledge_summary(self, max_items: int = 10) -> dict:
         """
@@ -617,8 +670,9 @@ class KnowledgeEngine:
 
     def close(self):
         """Close the database connection."""
-        if self.conn:
-            self.conn.close()
+        with self._db_lock:
+            if self.conn:
+                self.conn.close()
 
 
 def _now() -> str:

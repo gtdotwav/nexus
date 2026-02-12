@@ -64,7 +64,7 @@ class DeathRecovery:
         self.phase: RecoveryPhase = RecoveryPhase.NONE
         self.recovery_active: bool = False
         self._phase_start: float = 0
-        self._phase_timeout: float = 60  # Max 60s per phase
+        self._phase_timeout: float = 30  # Max 30s per phase (60s was too long)
         self._death_time: float = 0
         self._death_cause: str = ""
 
@@ -168,7 +168,17 @@ class DeathRecovery:
             return "respawned"
 
         elif self.phase == RecoveryPhase.AT_TEMPLE:
-            # At temple — check if we need to re-equip
+            # At temple — need to get to depot for gear
+            if self._equip_hotkeys or self._rebuff_spells:
+                self.phase = RecoveryPhase.WALKING_TO_DEPOT
+            else:
+                self.phase = RecoveryPhase.RETURNING_TO_HUNT
+            self._phase_start = time.time()
+            return "at_temple"
+
+        elif self.phase == RecoveryPhase.WALKING_TO_DEPOT:
+            # Walking to depot — navigator handles actual pathfinding
+            # This phase allows timeout to kick in if navigation stalls
             if self._equip_hotkeys:
                 self.phase = RecoveryPhase.RE_EQUIPPING
             elif self._rebuff_spells:
@@ -176,7 +186,8 @@ class DeathRecovery:
             else:
                 self.phase = RecoveryPhase.RETURNING_TO_HUNT
             self._phase_start = time.time()
-            return "at_temple"
+            log.info("recovery.at_depot")
+            return "at_depot"
 
         elif self.phase == RecoveryPhase.RE_EQUIPPING:
             # Re-equip gear from depot
@@ -241,7 +252,8 @@ class DeathRecovery:
             RecoveryPhase.DEATH_DETECTED: RecoveryPhase.WAITING_RESPAWN,
             RecoveryPhase.WAITING_RESPAWN: RecoveryPhase.RESPAWNING,
             RecoveryPhase.RESPAWNING: RecoveryPhase.AT_TEMPLE,
-            RecoveryPhase.AT_TEMPLE: RecoveryPhase.RETURNING_TO_HUNT,
+            RecoveryPhase.AT_TEMPLE: RecoveryPhase.WALKING_TO_DEPOT,
+            RecoveryPhase.WALKING_TO_DEPOT: RecoveryPhase.RE_EQUIPPING,
             RecoveryPhase.RE_EQUIPPING: RecoveryPhase.REBUFFING,
             RecoveryPhase.REBUFFING: RecoveryPhase.RETURNING_TO_HUNT,
             RecoveryPhase.RETURNING_TO_HUNT: RecoveryPhase.RECOVERED,

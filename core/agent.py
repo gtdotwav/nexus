@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import time
+import weakref
 import yaml
 import structlog
 from pathlib import Path
@@ -141,7 +142,8 @@ class NexusAgent:
         self.foundry.reactive_brain = self.reactive_brain
 
         # Back-reference so subsystems can access each other via agent
-        self.state._agent_ref = self
+        # Use weakref to prevent circular reference (State ↔ Agent) that blocks GC
+        self.state._agent_ref = weakref.ref(self)
 
         # Wire state events → consciousness + event bus
         self._wire_consciousness_events()
@@ -270,7 +272,16 @@ class NexusAgent:
         for task in self._tasks:
             task.cancel()
 
-        await asyncio.gather(*self._tasks, return_exceptions=True)
+        # Wait for tasks to finish with a hard timeout — prevents hanging forever
+        # if a loop ignores cancellation
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self._tasks, return_exceptions=True),
+                timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            log.warning("nexus.shutdown_timeout",
+                        msg="Some loops did not stop within 10s, forcing shutdown")
 
         # Phase 5: REFLECT — End-of-session analysis
         reflection = await self.consciousness.reflect_and_save()

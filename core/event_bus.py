@@ -19,6 +19,7 @@ Performance:
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import structlog
 from collections import defaultdict, deque
@@ -113,6 +114,11 @@ class EventBus:
         self._event_count: int = 0
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
+        # Thread-safety: _history and _event_count are written from both
+        # the async event loop (emit) and perception threads (emit_threadsafe).
+        # deque.append is NOT atomic when combined with counter increment.
+        self._lock = threading.Lock()
+
     def on(self, event_type: EventType, handler: Handler, priority: int = 0):
         """
         Subscribe to an event type.
@@ -143,8 +149,9 @@ class EventBus:
         All handlers are called asynchronously.
         """
         event = Event(type=event_type, data=data or {}, source=source)
-        self._history[event_type].append(event)
-        self._event_count += 1
+        with self._lock:
+            self._history[event_type].append(event)
+            self._event_count += 1
         await self._execute_handlers(event)
         return event
 
@@ -155,8 +162,9 @@ class EventBus:
         Schedules the event on the main event loop.
         """
         event = Event(type=event_type, data=data or {}, source=source)
-        self._history[event_type].append(event)
-        self._event_count += 1
+        with self._lock:
+            self._history[event_type].append(event)
+            self._event_count += 1
 
         if self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(
@@ -187,15 +195,24 @@ class EventBus:
                         asyncio.create_task(self._safe_call_async(handler, event))
                     )
                 else:
-                    handler(event)
+                    self._safe_call_sync(handler, event)
             except Exception as e:
-                log.error("event_bus.handler_error",
+                log.error("event_bus.handler_dispatch_error",
                           event=event.type.name, error=str(e),
                           handler=getattr(handler, "__name__", str(handler)))
 
         # Await all async handlers concurrently
         if async_tasks:
             await asyncio.gather(*async_tasks, return_exceptions=True)
+
+    def _safe_call_sync(self, handler: Handler, event: Event):
+        """Wrap a sync handler call with error isolation + logging."""
+        try:
+            handler(event)
+        except Exception as e:
+            log.error("event_bus.sync_handler_error",
+                      event=event.type.name, error=str(e),
+                      handler=getattr(handler, "__name__", str(handler)))
 
     async def _safe_call_async(self, handler: Handler, event: Event):
         """Wrap an async handler call with error logging."""
@@ -214,22 +231,25 @@ class EventBus:
 
     def get_history(self, event_type: EventType,
                     max_age_s: float = 60) -> list[Event]:
-        """Get recent events of a type."""
+        """Get recent events of a type (thread-safe)."""
         cutoff = time.time() - max_age_s
-        return [e for e in self._history[event_type] if e.timestamp >= cutoff]
+        with self._lock:
+            return [e for e in self._history[event_type] if e.timestamp >= cutoff]
 
     def get_last(self, event_type: EventType) -> Optional[Event]:
-        """Get the most recent event of a type."""
-        history = self._history.get(event_type)
-        if history:
-            return history[-1]
-        return None
+        """Get the most recent event of a type (thread-safe)."""
+        with self._lock:
+            history = self._history.get(event_type)
+            if history:
+                return history[-1]
+            return None
 
     @property
     def stats(self) -> dict:
-        return {
-            "total_events": self._event_count,
-            "handler_count": sum(len(h) for h in self._handlers.values()),
-            "global_handlers": len(self._global_handlers),
-            "active_channels": len(self._handlers),
-        }
+        with self._lock:
+            return {
+                "total_events": self._event_count,
+                "handler_count": sum(len(h) for h in self._handlers.values()),
+                "global_handlers": len(self._global_handlers),
+                "active_channels": len(self._handlers),
+            }

@@ -34,7 +34,7 @@ from datetime import datetime, date
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Any
-from collections import deque, Counter
+from collections import defaultdict, deque, Counter
 
 log = structlog.get_logger()
 
@@ -134,8 +134,11 @@ class Consciousness:
         # ─── Memory System ────────────────────────────────
         self.working_memory: deque[Memory] = deque(maxlen=1000)
         self.core_memories: list[Memory] = []
-        self._memory_index: dict[str, list[Memory]] = {}  # category → memories (fast lookup)
+        self._memory_index: dict[str, list[Memory]] = defaultdict(list)  # category → memories (fast lookup)
         self._recent_fingerprints: deque = deque(maxlen=500)  # Dedup (ordered, auto-pruned)
+
+        # Track fire-and-forget async tasks to prevent data loss on shutdown
+        self._pending_log_tasks: set[asyncio.Task] = set()
 
         # ─── Goals ────────────────────────────────────────
         self.active_goals: list[Goal] = []
@@ -388,11 +391,15 @@ class Consciousness:
             return
         self._recent_fingerprints.append(entry.fingerprint)  # Auto-evicts oldest at maxlen
 
+        # Before appending to a full deque, promote important memories about to be evicted
+        if len(self.working_memory) == self.working_memory.maxlen:
+            evicted = self.working_memory[0]  # Oldest entry about to be dropped
+            if evicted.importance >= 0.6 and evicted.fingerprint not in {m.fingerprint for m in self.core_memories}:
+                self.core_memories.append(evicted)
+
         self.working_memory.append(entry)
 
-        # Index by category for fast recall
-        if category not in self._memory_index:
-            self._memory_index[category] = []
+        # Index by category for fast recall (defaultdict — no key check needed)
         self._memory_index[category].append(entry)
 
         # Auto-promote critical memories
@@ -407,11 +414,12 @@ class Consciousness:
             cause = self._extract_cause(content)
             self._close_call_causes[cause] += 1
 
-        # Append to daily episode log (fire-and-forget async write)
+        # Append to daily episode log — tracked to prevent data loss on shutdown
         try:
-            import asyncio
             loop = asyncio.get_running_loop()
-            loop.create_task(self._append_to_daily_log(entry))
+            task = loop.create_task(self._append_to_daily_log(entry))
+            self._pending_log_tasks.add(task)
+            task.add_done_callback(self._pending_log_tasks.discard)
         except RuntimeError:
             pass  # No event loop running yet — skip daily log
 
@@ -820,6 +828,12 @@ class Consciousness:
         await self.save_goals()
         await self.save_mastery()
 
+    async def flush_pending_writes(self):
+        """Wait for all pending log writes to complete. Call before shutdown."""
+        if self._pending_log_tasks:
+            await asyncio.gather(*self._pending_log_tasks, return_exceptions=True)
+            self._pending_log_tasks.clear()
+
     async def reflect_and_save(self) -> dict:
         """End-of-session: full reflection, save everything."""
         session_min = (time.time() - self.session_start) / 60
@@ -851,6 +865,9 @@ class Consciousness:
             await f.write(f"Duration: {session_min:.0f}min | Emotion: {json.dumps(self.emotion)}\n")
             for lesson in lessons:
                 await f.write(f"- {lesson}\n")
+
+        # Flush any pending log writes before final save
+        await self.flush_pending_writes()
 
         # Persist everything
         await self.save_core_memory()
