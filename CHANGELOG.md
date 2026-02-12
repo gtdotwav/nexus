@@ -7,6 +7,49 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ---
 
 
+## [0.5.0] - 2026-02-12
+
+### Added
+- **Zero-Knowledge Learning System** — The agent now learns by playing, with zero hardcoded game knowledge
+  - Works on any Tibia variant: OT servers, Pokemon Tibia, custom servers
+  - No wikis, no pre-configured skills needed — the agent discovers everything itself
+- **Knowledge Engine** (`core/knowledge.py`) — SQLite-backed persistent knowledge store
+  - 6 tables: learned_creatures, learned_spells, learned_items, learned_locations, learned_mechanics, confidence_history
+  - Upsert with confidence boosting on re-observations
+  - Spatial knowledge queries (`get_nearby_knowledge`)
+  - Confidence decay over time (old knowledge fades)
+  - Token-efficient summaries for strategic brain context
+- **Vision Loop** (`core/loops/vision.py`) — 10th async loop using Claude Haiku
+  - Sends compressed screenshots (768px JPEG, ~50KB) every 5 seconds
+  - Passive scene observation: detects creatures, NPCs, items, location type, chat messages, tutorials
+  - Routes all observations to Knowledge Engine automatically
+  - Triggers auto-skill generation when enough safe creatures are discovered
+  - Cost: ~$0.30/hr with Haiku at 5s intervals
+- **Vision Utilities** (`brain/vision_utils.py`) — Shared frame compression and multimodal message building
+  - `frame_to_base64()` — BGR numpy → JPEG base64 with configurable quality/size
+  - `build_vision_message()` — Builds Anthropic Vision API content arrays
+- **Strategic Brain Vision Analysis** — `analyze_with_vision()` method for important decisions using Sonnet with screenshots
+- **Auto-Skill Generation from Knowledge** — `skill_engine.auto_generate_from_knowledge()` builds hunting skills purely from learned facts
+  - Targeting from safe creatures, flee-from from dangerous creatures
+  - Healing inference from discovered spells
+  - Zero API calls needed — pure knowledge-to-YAML transformation
+- **Zero-Knowledge Bootstrap** — When no skills exist at startup, agent enters EXPLORING mode
+  - Vision loop accumulates knowledge passively
+  - When enough safe creatures are found, auto-generates first hunting skill
+  - Switches to HUNTING mode automatically
+
+### Changed
+- `core/agent.py` — Knowledge Engine initialization, zero-knowledge bootstrap flow, knowledge stats in session report
+- `brain/strategic.py` — Knowledge context injected into `_build_context()`, knowledge reference for cross-system access
+- `perception/screen_capture.py` — Frame caching via `last_frame` property for vision loop consumption
+- `skills/engine.py` — Added `auto_generate_from_knowledge()` and `get_available_skills()` methods
+- `core/loops/__init__.py` — Vision loop registered as 10th loop
+- `config/settings.yaml.example` — Added `vision:` and `knowledge:` configuration sections
+- Agent docstring updated from "9 loops" to "10 loops"
+- Version bump to 0.5.0
+
+---
+
 ## [0.4.2] - 2026-02-12
 
 ### Added

@@ -13,7 +13,7 @@ The agent THINKS, LEARNS, REMEMBERS, and EVOLVES across sessions.
 The player controls start/stop. NEXUS never decides to pause itself.
 
 ARCHITECTURE NOTE:
-    All 9 loops are in core/loops/ as separate files.
+    All 10 loops are in core/loops/ as separate files.
     Each loop is: async def run(agent: NexusAgent) -> None
     To add a new loop, create core/loops/my_loop.py and register it here.
 """
@@ -45,6 +45,7 @@ from actions.behaviors import BehaviorEngine
 from actions.explorer import Explorer, ExploreStrategy
 from perception.spatial_memory_v2 import SpatialMemoryV2
 from brain.reasoning import ReasoningEngine
+from core.knowledge import KnowledgeEngine
 
 log = structlog.get_logger()
 
@@ -123,6 +124,11 @@ class NexusAgent:
             self.config.get("exploration", {}),
         )
 
+        # === KNOWLEDGE ENGINE (zero-knowledge learning — SQLite backend) ===
+        knowledge_config = self.config.get("knowledge", {})
+        knowledge_db = knowledge_config.get("database", "data/knowledge.db")
+        self.knowledge = KnowledgeEngine(db_path=knowledge_db)
+
         # === FOUNDRY (self-evolution engine) ===
         self.foundry = Foundry(self.consciousness, self.strategic_brain, self.skill_engine)
 
@@ -130,6 +136,7 @@ class NexusAgent:
         self.strategic_brain.consciousness = self.consciousness
         self.strategic_brain.spatial_memory = self.spatial_memory
         self.strategic_brain.reasoning_engine = self.reasoning_engine
+        self.strategic_brain.knowledge = self.knowledge
         self.reactive_brain.consciousness = self.consciousness
         self.foundry.reactive_brain = self.reactive_brain
 
@@ -196,6 +203,30 @@ class NexusAgent:
                 "strategy", f"Session started with skill: {active_skill.name}",
                 importance=0.5, tags=["session_start"],
             )
+        else:
+            # === ZERO-KNOWLEDGE BOOTSTRAP ===
+            # No pre-configured skills found. Enter exploration mode.
+            # The vision loop will observe the game and build knowledge.
+            # Once enough knowledge is accumulated, auto-generate first skill.
+            knowledge_stats = self.knowledge.get_learning_stats()
+            log.info("nexus.zero_knowledge_bootstrap",
+                     msg="No skills found — entering zero-knowledge exploration mode",
+                     known_creatures=knowledge_stats["creatures"],
+                     known_spells=knowledge_stats["spells"])
+
+            self.consciousness.remember(
+                "strategy",
+                "Zero-knowledge bootstrap: No skills loaded. "
+                "Entering EXPLORING mode to observe and learn the game from scratch.",
+                importance=0.9,
+                tags=["zero_knowledge", "bootstrap", "session_start"],
+            )
+
+            # Set initial exploration goals
+            if not self.consciousness.active_goals:
+                self.consciousness.set_goal("Discover safe creatures to hunt", "exploration", 1)
+                self.consciousness.set_goal("Learn healing spells and mechanics", "mastery", 2)
+                self.consciousness.set_goal("Map the starting area", "exploration", 3)
 
         # Phase 4: LIVE — Start all loops from core/loops/ package
         log.info("nexus.starting_loops", count=len(ALL_LOOPS))
@@ -215,10 +246,13 @@ class NexusAgent:
             for name, loop_fn in ALL_LOOPS
         ]
 
-        self.state.set_mode(AgentMode.HUNTING)
-        log.info("nexus.alive", mode="HUNTING",
+        # Set initial mode based on whether we have skills
+        initial_mode = AgentMode.HUNTING if active_skill else AgentMode.EXPLORING
+        self.state.set_mode(initial_mode)
+        log.info("nexus.alive", mode=initial_mode.name,
                  goals=len(self.consciousness.active_goals),
-                 loops=len(self._tasks))
+                 loops=len(self._tasks),
+                 zero_knowledge=active_skill is None)
 
         # Wait for all tasks (they run forever until shutdown)
         try:
@@ -243,6 +277,10 @@ class NexusAgent:
 
         # Save spatial memory (persistent world map)
         await self.spatial_memory.save()
+
+        # Decay old knowledge confidence (keeps DB fresh)
+        knowledge_decay_days = self.config.get("knowledge", {}).get("confidence_decay_days", 30)
+        self.knowledge.decay_confidence(max_age_days=knowledge_decay_days)
 
         # Stop exploration if active
         if self.explorer.active:
@@ -277,6 +315,7 @@ class NexusAgent:
             spatial_memory=self.spatial_memory.stats,
             reasoning=self.reasoning_engine.stats,
             explorer=self.explorer.stats,
+            knowledge=self.knowledge.get_learning_stats(),
         )
 
     async def _auto_calibrate_regions(self):

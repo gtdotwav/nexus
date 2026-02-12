@@ -164,6 +164,7 @@ class StrategicBrain:
         self.consciousness = None
         self.spatial_memory = None       # SpatialMemory instance
         self.reasoning_engine = None     # ReasoningEngine instance
+        self.knowledge = None            # KnowledgeEngine instance
 
     async def _ensure_client(self) -> bool:
         if self.client:
@@ -500,6 +501,36 @@ class StrategicBrain:
                     )
                     lines.append(f"Frontiers: {f_str}")
 
+        # Knowledge Engine context (learned facts from vision)
+        if self.knowledge:
+            try:
+                summary = self.knowledge.get_knowledge_summary(max_items=5)
+                safe = summary.get("safe_creatures", [])
+                dangerous = summary.get("dangerous_creatures", [])
+                spells = summary.get("known_spells", [])
+                stats = summary.get("stats", {})
+
+                if stats.get("creatures", 0) > 0 or stats.get("spells", 0) > 0:
+                    lines.append("")
+                    lines.append("[KNOWLEDGE]")
+                    lines.append(
+                        f"Known: {stats.get('creatures', 0)} creatures, "
+                        f"{stats.get('spells', 0)} spells, "
+                        f"{stats.get('items', 0)} items, "
+                        f"{stats.get('locations', 0)} locations"
+                    )
+                    if safe:
+                        safe_str = " ".join(f"{c['name']}(hp≈{c['hp']},k={c['kills']})" for c in safe[:4])
+                        lines.append(f"Safe: {safe_str}")
+                    if dangerous:
+                        dng_str = " ".join(f"{c['name']}(died={c['deaths_from']})" for c in dangerous[:3])
+                        lines.append(f"Danger: {dng_str}")
+                    if spells:
+                        sp_str = " ".join(f"{s['name']}(mp={s['mana']})" for s in spells[:4])
+                        lines.append(f"Spells: {sp_str}")
+            except Exception:
+                pass  # Knowledge context is optional, never block strategic thinking
+
         return "\n".join(lines)
 
     def _parse_json(self, text: str) -> dict:
@@ -559,6 +590,82 @@ Return JSON with:
             log.error("strategic.analysis_failed")
             return None
         return self._parse_json(response.content[0].text)
+
+    # ─── Vision-Enhanced Analysis ─────────────────────────
+
+    async def analyze_with_vision(self, frame, context: dict = None) -> Optional[dict]:
+        """
+        Strategic analysis using vision — for important decisions.
+        Uses Sonnet (smarter) for situations where the agent needs deeper analysis.
+
+        Args:
+            frame: numpy array (BGR) from screen capture
+            context: Optional dict with additional context (knowledge_summary, state)
+
+        Returns:
+            Dict with strategic decisions, or None on failure.
+        """
+        if not await self._ensure_client():
+            return None
+
+        import numpy as np
+        if frame is None or not isinstance(frame, np.ndarray):
+            return None
+
+        from brain.vision_utils import frame_to_base64, build_vision_message
+
+        b64 = frame_to_base64(frame, quality=70, max_width=1024)
+        if not b64:
+            return None
+
+        knowledge_text = ""
+        if context and "knowledge_summary" in context:
+            knowledge_text = f"\nKnown facts: {json.dumps(context['knowledge_summary'], indent=1)}"
+
+        state_text = ""
+        if context and "state" in context:
+            state_text = f"\nCurrent state: {json.dumps(context['state'])}"
+
+        prompt = f"""You are NEXUS strategic brain analyzing a game screenshot for an important decision.
+{knowledge_text}{state_text}
+
+Analyze this screenshot and provide a strategic decision in JSON:
+{{
+    "situation": "brief assessment",
+    "threat_level": 0-10,
+    "decisions": {{}},
+    "new_knowledge": [
+        {{"type": "creature|spell|item|location|mechanic", "name": "...", "details": {{}}}}
+    ],
+    "recommendation": "what should the agent do and why"
+}}"""
+
+        content = build_vision_message(b64, prompt)
+
+        start = time.perf_counter()
+        try:
+            response = await self._call_api_with_retry(
+                model=self.config["model_strategic"],
+                max_tokens=1024,
+                temperature=0.2,
+                messages=[{"role": "user", "content": content}],
+            )
+
+            latency = (time.perf_counter() - start) * 1000
+            self._calls += 1
+            self._total_latency_ms += latency
+
+            if response is None or not response.content:
+                self._errors += 1
+                return None
+
+            return self._parse_json(response.content[0].text)
+
+        except Exception as e:
+            self._errors += 1
+            log.error("strategic.vision_analysis_error",
+                      error=str(e), latency_ms=round((time.perf_counter() - start) * 1000))
+            return None
 
     @property
     def calls(self) -> int:

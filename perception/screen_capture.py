@@ -36,6 +36,12 @@ class ScreenCapture:
         self._initialized = False
         self._frame_count = 0
         self._fps_timer = time.time()
+        self._last_frame: Optional[np.ndarray] = None  # Cached for vision loop
+
+    @property
+    def last_frame(self) -> Optional[np.ndarray]:
+        """Most recently captured frame. Used by vision loop for passive observation."""
+        return self._last_frame
 
     async def initialize(self):
         """Initialize the screen capture backend."""
@@ -90,6 +96,10 @@ class ScreenCapture:
                 frame = await self._capture_dxcam()
             else:
                 frame = await self._capture_mss()
+
+            # Cache frame for vision loop
+            if frame is not None:
+                self._last_frame = frame
 
             # Track FPS
             self._frame_count += 1

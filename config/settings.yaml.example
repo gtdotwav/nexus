@@ -3,7 +3,7 @@
 
 agent:
   name: "NEXUS"
-  version: "0.4.2"
+  version: "0.5.0"
   game: "tibia"
   character_name: "YOUR_CHARACTER_NAME"
   log_level: "INFO"
@@ -149,6 +149,20 @@ tracking:
     - supply_efficiency
     - uptime_percent
   snapshot_interval_seconds: 60
+
+# Vision Loop — Claude Haiku observes the screen passively
+vision:
+  enabled: true
+  cycle_seconds: 5        # How often to send a screenshot to Claude Vision
+  model: "claude-haiku-4-5-20251001"  # Cheap + fast for passive observation
+  max_width: 768          # Resize frames before sending (saves tokens)
+  jpeg_quality: 60        # JPEG compression (lower = smaller payload)
+
+# Knowledge Engine — Persistent learned facts (SQLite)
+knowledge:
+  database: "data/knowledge.db"
+  confidence_decay_days: 30   # Old knowledge loses confidence over time
+  auto_skill_threshold: 3     # Min safe creatures before auto-generating a skill
 
 # Dashboard
 dashboard:

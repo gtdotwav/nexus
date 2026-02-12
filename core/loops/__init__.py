@@ -27,6 +27,7 @@ from core.loops.evolution import run as evolution_loop
 from core.loops.recovery import run as recovery_loop
 from core.loops.reasoning import run as reasoning_loop
 from core.loops.metrics import run as metrics_loop
+from core.loops.vision import run as vision_loop
 
 ALL_LOOPS = [
     ("perception", perception_loop),
@@ -38,6 +39,7 @@ ALL_LOOPS = [
     ("recovery", recovery_loop),
     ("reasoning", reasoning_loop),
     ("metrics", metrics_loop),
+    ("vision", vision_loop),
 ]
 
 # ─── Auto-discovery check ──────────────────────────────────
@@ -46,6 +48,7 @@ _IGNORE_FILES = {"__init__.py", "TEMPLATE.py"}
 _registered_modules = {
     "perception", "reactive", "action", "strategic",
     "consciousness", "evolution", "recovery", "reasoning", "metrics",
+    "vision",
 }
 
 try:
@@ -71,4 +74,5 @@ __all__ = [
     "recovery_loop",
     "reasoning_loop",
     "metrics_loop",
+    "vision_loop",
 ]

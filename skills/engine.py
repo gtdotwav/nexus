@@ -389,6 +389,109 @@ class SkillEngine:
             log.error("skill_engine.save_from_data_error", error=str(e))
             return None
 
+    async def auto_generate_from_knowledge(self, knowledge) -> Optional[Skill]:
+        """
+        Generate a hunting skill from accumulated knowledge (Zero-Knowledge System).
+
+        Called when the agent has explored enough and found killable creatures.
+        Builds a skill YAML purely from what the agent learned by playing.
+
+        Args:
+            knowledge: KnowledgeEngine instance with learned facts
+
+        Returns:
+            Skill object if generation succeeded, None if not enough data.
+        """
+        safe_creatures = knowledge.get_safe_creatures()
+        if not safe_creatures:
+            log.info("skill_engine.auto_gen_insufficient_data", reason="no safe creatures known")
+            return None
+
+        known_locations = knowledge.get_known_locations()
+        known_spells = knowledge.get_known_spells()
+        dangerous_creatures = knowledge.get_dangerous_creatures()
+
+        # Build targeting list from safe creatures
+        targeting = []
+        for idx, creature in enumerate(safe_creatures[:5]):
+            targeting.append({
+                "name": creature["name"],
+                "priority": max(1, 6 - idx),
+                "attack_mode": "full_attack",
+                "chase_distance": 3,
+            })
+
+        # Build flee-from list from dangerous creatures
+        flee_from = [c["name"] for c in dangerous_creatures[:5]]
+
+        # Infer healing from known spells
+        healing_spells = [
+            s for s in known_spells
+            if "heal" in s.get("effect", "").lower()
+            or "exura" in s.get("words", "").lower()
+            or "exura" in s.get("name", "").lower()
+        ]
+        healing = {
+            "critical_hp_percent": 30,
+            "medium_hp_percent": 60,
+        }
+        if healing_spells:
+            healing["spells"] = [
+                {"name": s["name"], "words": s.get("words", ""), "mana_cost": s.get("mana_cost", 0)}
+                for s in healing_spells[:3]
+            ]
+
+        # Build the skill
+        primary_creature = safe_creatures[0]["name"]
+        skill_name = f"auto_hunt_{primary_creature.lower().replace(' ', '_')}"
+
+        skill_data = {
+            "name": skill_name,
+            "game": "detected",
+            "version": "1.0",
+            "category": "hunting",
+            "performance_score": 50.0,
+            "metadata": {
+                "auto_generated": True,
+                "source": "zero_knowledge_learning",
+                "creatures_known": len(safe_creatures),
+                "locations_known": len(known_locations),
+            },
+            "targeting": targeting,
+            "healing": healing,
+            "anti_pk": {
+                "enabled": True,
+                "action": "flee",
+                "flee_from": flee_from,
+            },
+        }
+
+        # If we have location data, try to build basic waypoints
+        if known_locations:
+            import json as _json
+            loc = known_locations[0]
+            try:
+                coords = _json.loads(loc.get("coordinates", "{}"))
+                if isinstance(coords, dict) and coords.get("x"):
+                    skill_data["waypoints"] = [
+                        {"x": coords["x"], "y": coords["y"], "z": coords.get("z", 7), "action": "hunt"},
+                    ]
+            except (ValueError, TypeError, KeyError):
+                pass
+
+        log.info("skill_engine.auto_generated",
+                 name=skill_name,
+                 targets=len(targeting),
+                 flee_from=len(flee_from),
+                 has_healing=bool(healing_spells),
+                 has_waypoints="waypoints" in skill_data)
+
+        return await self.save_skill_from_data(skill_data)
+
+    def get_available_skills(self) -> list[str]:
+        """Return list of available skill names."""
+        return list(self.skills.keys())
+
     async def run_improvement_cycle(self):
         """
         Run a full improvement cycle on all skills below threshold.
