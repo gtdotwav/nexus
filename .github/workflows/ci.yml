@@ -85,6 +85,9 @@ jobs:
               'games.registry',
               'games.tibia.adapter',
               'dashboard.server',
+              'dashboard.tui',
+              'dashboard.tui_widgets',
+              'dashboard.tui_models',
           ]
           for mod in modules:
               try:

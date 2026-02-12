@@ -43,7 +43,7 @@ try:
     from importlib.metadata import version as _pkg_version
     VERSION = _pkg_version("nexus-agent")
 except Exception:
-    VERSION = "0.4.0"  # Fallback when not installed as package
+    VERSION = "0.4.2"  # Fallback when not installed as package
 NEXUS_HOME = Path.home() / ".nexus"
 PID_FILE = NEXUS_HOME / "nexus.pid"
 CONFIG_FILE = NEXUS_HOME / "config.yaml"
@@ -128,53 +128,62 @@ def cli(ctx, version):
 @cli.command()
 @click.option("--config", "-c", default=None, help="Path to config file")
 @click.option("--game", "-g", default="tibia", help="Game to play (default: tibia)")
-@click.option("--dashboard/--no-dashboard", default=True, help="Enable web dashboard")
+@click.option("--tui/--no-tui", default=True, help="Enable TUI dashboard (default: on)")
+@click.option("--dashboard/--no-dashboard", default=False, help="Enable web dashboard")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging")
 @click.option("--port", "-p", default=8420, help="Dashboard port")
-def start(config, game, dashboard, debug, port):
+def start(config, game, tui, dashboard, debug, port):
     """Start the NEXUS agent."""
     ensure_home_dir()
     setup_logging(debug)
 
-    console.print(get_banner())
-
     # Check environment
     issues = check_environment()
     if issues:
+        console.print(get_banner())
         console.print("[red]Environment issues found:[/red]")
         for issue in issues:
             console.print(f"  [red]✗[/red] {issue}")
         console.print("\n  Run [cyan]nexus setup[/cyan] to fix these issues.")
         sys.exit(1)
 
-    console.print(f"  [green]✓[/green] Environment OK")
-    console.print(f"  [green]✓[/green] Game: [cyan]{game}[/cyan]")
-
-    # Check API key
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        console.print("  [yellow]![/yellow] ANTHROPIC_API_KEY not set (strategic brain disabled)")
-
     # Determine config path
     if config is None:
         config = str(CONFIG_FILE) if CONFIG_FILE.exists() else "config/settings.yaml"
 
     if not Path(config).exists():
+        console.print(get_banner())
         console.print(f"\n  [yellow]No config found.[/yellow] Run [cyan]nexus setup[/cyan] first.")
         console.print(f"  Or create a config at: {config}")
         sys.exit(1)
-
-    console.print(f"  [green]✓[/green] Config: {config}")
-
-    if dashboard:
-        console.print(f"  [green]✓[/green] Dashboard: [cyan]http://127.0.0.1:{port}[/cyan]")
-
-    console.print()
 
     # Write PID file
     PID_FILE.write_text(str(os.getpid()))
 
     try:
-        asyncio.run(_run_agent(config, game, dashboard, port))
+        if tui:
+            # TUI mode: Textual app manages the agent lifecycle
+            from dashboard.tui import NexusTUI
+            app = NexusTUI(
+                config_path=config,
+                game=game,
+                with_dashboard=dashboard,
+                dashboard_port=port,
+            )
+            app.run()
+        else:
+            # Headless mode: no TUI, just the agent
+            console.print(get_banner())
+            console.print(f"  [green]✓[/green] Environment OK")
+            console.print(f"  [green]✓[/green] Game: [cyan]{game}[/cyan]")
+            console.print(f"  [green]✓[/green] Config: {config}")
+            if not os.environ.get("ANTHROPIC_API_KEY"):
+                console.print("  [yellow]![/yellow] ANTHROPIC_API_KEY not set (strategic brain disabled)")
+            if dashboard:
+                console.print(f"  [green]✓[/green] Dashboard: [cyan]http://127.0.0.1:{port}[/cyan]")
+            console.print()
+            asyncio.run(_run_agent(config, game, dashboard, port))
+
     except KeyboardInterrupt:
         console.print("\n[yellow]Shutting down gracefully...[/yellow]")
     finally:

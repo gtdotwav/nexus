@@ -1,4 +1,5 @@
-"""NEXUS Web Dashboard — Real-time agent monitoring and control."""
+"""NEXUS Dashboard — TUI (primary) + Web (secondary) interfaces."""
 from dashboard.server import DashboardServer
+from dashboard.tui import NexusTUI
 
-__all__ = ["DashboardServer"]
+__all__ = ["DashboardServer", "NexusTUI"]

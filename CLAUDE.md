@@ -72,8 +72,11 @@ games/
 └── tibia/adapter.py
 
 dashboard/
-├── server.py                  # WebSocket server (null-safe agora)
-└── app.html                   # Real-time dashboard
+├── tui.py                     # ← PRIMARY: Textual TUI (NexusTUI) — 3 telas
+├── tui_widgets.py             # 9 widgets customizados (VitalBar, BattleList, etc.)
+├── tui_models.py              # TUIState data bridge (from_agent + demo)
+├── server.py                  # WebSocket server (secondary, remote monitoring)
+└── app.html                   # Web dashboard SPA
 ```
 
 **NOTA**: `perception/game_reader.py` e `perception/spatial_memory.py` foram REMOVIDOS em v0.4.0.
@@ -162,15 +165,30 @@ chore: manutenção
 - Spatial Memory: SQLite WAL mode, batched writes
 - Event System: Typed async EventBus, `run_coroutine_threadsafe` para thread-safety
 - Input: pynput, gaussian noise, anti-detection, asyncio.Lock
-- Dashboard: aiohttp + WebSocket
+- Dashboard TUI: Textual (primary, terminal) + aiohttp WebSocket (secondary, remote)
 - CLI: Click + Rich
 - Version: Single source of truth em `pyproject.toml` via `importlib.metadata`
 
 ## Versão Atual
 
-**v0.4.1** — Circuit Breaker + Tests + Config Validation
+**v0.4.2** — Textual TUI Dashboard
 
-## Últimas Mudanças (v0.4.1)
+## Últimas Mudanças (v0.4.2)
+
+### Novas Features
+- **Textual TUI Dashboard** — Primary local interface, runs in terminal. 3 screens: Game Select (F1), Monitor (F2), Skills (F3)
+- `dashboard/tui.py` — NexusTUI app class, manages agent lifecycle
+- `dashboard/tui_widgets.py` — 9 custom widgets (VitalBar, BattleListWidget, EventStream, etc.)
+- `dashboard/tui_models.py` — TUIState data bridge with `from_agent()` and `demo()` class methods
+- `nexus start` now launches TUI by default; `--no-tui` for headless mode
+- Demo mode: simulated data when agent not running
+
+### CLI Changes
+- `--tui/--no-tui` flag added (default: `--tui`)
+- `--dashboard` now defaults to off (web dashboard is secondary)
+- TUI manages agent lifecycle internally
+
+## Mudanças Anteriores (v0.4.1)
 
 ### Novas Features
 - **Circuit breaker** em `brain/strategic.py`: 3-state (CLOSED/OPEN/HALF_OPEN). Após 5 falhas em 60s, para de chamar API e retorna None instantaneamente. Probe a cada 30s
@@ -230,7 +248,7 @@ chore: manutenção
 ## Known Issues & Limitations
 
 ### O que NÃO funciona ainda
-- **Dashboard**: Parcialmente implementado
+- ~~**Dashboard**: Parcialmente implementado~~ → Textual TUI (v0.4.2)
 - **Humanização do mouse**: Falta curvas Bézier
 - **Creature database**: Tiers inferidos pelo reasoning engine, não existe DB estático
 - **Skill YAML schema**: Skills não são validadas antes de carregar

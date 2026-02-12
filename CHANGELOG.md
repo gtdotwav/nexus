@@ -7,6 +7,33 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ---
 
 
+## [0.4.2] - 2026-02-12
+
+### Added
+- **Textual TUI Dashboard** — Primary local interface that runs in the terminal
+  - 3 screens: Game Select (F1), Monitor (F2), Skills (F3)
+  - Real-time HP/Mana bars with color gradients
+  - Event stream with color-coded entries (kills, loot, heals, mode changes)
+  - Battle list with inline HP bars and target indicator
+  - Session stats panel (XP/hr, Gold/hr, K/D, close calls)
+  - Strategic brain metrics (calls, latency, error rate, circuit breaker)
+  - Consciousness panel (emotion, goals, recent memories)
+  - Game selection cards with ready/coming-soon status
+  - Demo mode with simulated data when no agent is running
+  - Keybindings: F1-F3 screens, P pause, D demo toggle, Q quit
+- `dashboard/tui.py` — Main Textual app (NexusTUI) with 3 screens
+- `dashboard/tui_widgets.py` — 9 custom widgets (VitalBar, BattleListWidget, etc.)
+- `dashboard/tui_models.py` — TUIState data bridge between agent and widgets
+- `--tui/--no-tui` CLI flag (default: `--tui`)
+
+### Changed
+- `nexus start` now launches TUI by default (use `--no-tui` for headless)
+- `--dashboard` now defaults to off (TUI is the primary interface)
+- Web dashboard remains available as secondary/remote interface
+- `textual>=0.85.0` added to dependencies
+
+---
+
 ## [0.4.1] - 2026-02-12
 
 ### Added
