@@ -8,7 +8,7 @@ version = "0.4.2"
 description = "NEXUS — Autonomous Gaming Agent with Dual-Brain AI Architecture"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 authors = [
     {name = "NEXUS Team"},
 ]
@@ -17,6 +17,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -64,6 +65,7 @@ dev = [
 
 [project.scripts]
 nexus = "nexus_cli:cli"
+nexus-gui = "launcher:launch"
 
 [project.urls]
 Homepage = "https://github.com/gtdotwav/nexus"

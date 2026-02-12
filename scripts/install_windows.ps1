@@ -11,10 +11,10 @@
 
 $ErrorActionPreference = "Stop"
 
-$NEXUS_VERSION = "0.1.0"
-$NEXUS_HOME = "$env:USERPROFILE\.nexus"
+$NEXUS_VERSION = "0.4.2"
+$NEXUS_HOME = "$env:USERPROFILE\NEXUS"
 $MIN_PYTHON_MAJOR = 3
-$MIN_PYTHON_MINOR = 11
+$MIN_PYTHON_MINOR = 10
 
 function Write-Banner {
     Write-Host ""
@@ -228,7 +228,7 @@ function New-DesktopShortcut {
 @echo off
 title NEXUS - Autonomous Gaming Agent
 call "$NEXUS_HOME\venv\Scripts\activate.bat"
-python -m nexus_cli start --dashboard
+nexus start
 pause
 "@
     $batchContent | Out-File -FilePath $batchFile -Encoding ASCII
