@@ -7,16 +7,10 @@ Each widget is self-contained and updates via refresh(state).
 
 from __future__ import annotations
 
-from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal
-from textual.widget import Widget
-from textual.widgets import Static, Label, ListView, ListItem, DataTable
+from textual.message import Message
 from textual.reactive import reactive
+from textual.widgets import Static
 from rich.text import Text
-from rich.table import Table
-from rich.panel import Panel
-from rich.bar import Bar
-from rich.console import Group
 
 from dashboard.tui_models import TUIState
 
@@ -30,7 +24,6 @@ class VitalBar(Static):
 
     value: reactive[float] = reactive(100.0)
     label_text: reactive[str] = reactive("HP")
-    bar_style: reactive[str] = reactive("green")
 
     def __init__(self, label: str = "HP", style_type: str = "hp", **kwargs):
         super().__init__(**kwargs)
@@ -52,7 +45,7 @@ class VitalBar(Static):
             return "red bold"
 
     def render(self) -> Text:
-        pct = max(0, min(100, self.value))
+        pct = max(0.0, min(100.0, self.value))
         color = self._get_color(pct)
         filled = int(pct / 5)
         empty = 20 - filled
@@ -146,11 +139,10 @@ class BattleListWidget(Static):
         lines = []
         for c in self._battle_list[:8]:
             name = c.get("name", "?")[:16]
-            hp = c.get("hp", 0)
+            hp = max(0.0, min(100.0, c.get("hp", 0)))
             dist = c.get("dist", 0)
             attacking = c.get("attacking", False)
 
-            # HP color
             if hp > 60:
                 hp_color = "green"
             elif hp > 30:
@@ -158,12 +150,11 @@ class BattleListWidget(Static):
             else:
                 hp_color = "red"
 
-            # Target marker
             marker = "►" if name == self._target else " "
             atk = " ⚔" if attacking else ""
-
             filled = int(hp / 10)
             bar = "█" * filled + "░" * (10 - filled)
+
             lines.append(
                 f" {marker} {name:<16} [{hp_color}]{bar}[/{hp_color}] {hp:4.0f}% d:{dist}{atk}"
             )
@@ -176,12 +167,11 @@ class BattleListWidget(Static):
 # ═══════════════════════════════════════════════════════
 
 class EventStream(Static):
-    """Scrollable log of recent agent events."""
+    """Log of recent agent events (newest first)."""
 
     DEFAULT_CSS = """
     EventStream {
         height: 100%;
-        overflow-y: auto;
     }
     """
 
@@ -205,19 +195,22 @@ class EventStream(Static):
 
         lines = []
         for ev in self._events[:15]:
-            # Color events by type
             if ev.startswith("kill:"):
                 lines.append(f" [green]{ev}[/green]")
-            elif ev.startswith("death:"):
+            elif ev.startswith("death:") or ev.startswith("CLOSE CALL"):
                 lines.append(f" [red bold]{ev}[/red bold]")
             elif ev.startswith("heal:"):
                 lines.append(f" [cyan]{ev}[/cyan]")
             elif ev.startswith("loot:"):
                 lines.append(f" [yellow]{ev}[/yellow]")
-            elif ev.startswith("spot:"):
+            elif ev.startswith("spot:") or ev.startswith("player:"):
                 lines.append(f" [magenta]{ev}[/magenta]")
             elif ev.startswith("mode:"):
                 lines.append(f" [blue]{ev}[/blue]")
+            elif ev.startswith("brain:"):
+                lines.append(f" [dark_orange]{ev}[/dark_orange]")
+            elif ev.startswith("error:"):
+                lines.append(f" [red]{ev}[/red]")
             else:
                 lines.append(f" [dim]{ev}[/dim]")
 
@@ -246,7 +239,8 @@ class SessionStats(Static):
         }
         self.refresh()
 
-    def _format_number(self, n: int) -> str:
+    @staticmethod
+    def _format_number(n: int) -> str:
         if n >= 1_000_000:
             return f"{n / 1_000_000:.1f}M"
         elif n >= 1_000:
@@ -332,9 +326,11 @@ class BrainStats(Static):
 # ═══════════════════════════════════════════════════════
 
 EMOTION_ICONS = {
-    "Focused": "🎯", "Confident": "💪", "Cautious": "👀",
-    "Excited": "⚡", "Alert": "🔔", "Anxious": "😰",
-    "Frustrated": "😤", "Satisfied": "😊", "Bored": "😴",
+    "focused": "🎯", "confident": "💪", "cautious": "👀",
+    "excited": "⚡", "alert": "🔔", "anxious": "😰",
+    "frustrated": "😤", "satisfied": "😊", "bored": "😴",
+    "confidence": "💪", "determination": "🔥", "focus": "🎯",
+    "aggression": "⚔", "caution": "👀",
 }
 
 
@@ -357,7 +353,9 @@ class ConsciousnessPanel(Static):
         lines = [" [bold]Consciousness[/bold]"]
 
         if self._emotion:
-            icon = EMOTION_ICONS.get(self._emotion, "🧠")
+            # Try to find icon by lowercase first word
+            first_word = self._emotion.split()[0].lower().rstrip("(")
+            icon = EMOTION_ICONS.get(first_word, "🧠")
             lines.append(f" {icon} [italic]{self._emotion}[/italic]")
 
         if self._goals:
@@ -381,7 +379,14 @@ class ConsciousnessPanel(Static):
 # ═══════════════════════════════════════════════════════
 
 class GameCard(Static):
-    """Selectable card for a game in the selection screen."""
+    """Selectable card for a game. Posts Selected message on click."""
+
+    class Selected(Message):
+        """Posted when a ready game card is clicked."""
+
+        def __init__(self, game_id: str) -> None:
+            super().__init__()
+            self.game_id = game_id
 
     DEFAULT_CSS = """
     GameCard {
@@ -393,15 +398,25 @@ class GameCard(Static):
     }
     GameCard:hover {
         border: double $accent;
+        background: $boost;
+    }
+    GameCard:focus {
+        border: double cyan;
     }
     GameCard.-ready {
         border: solid green;
+    }
+    GameCard.-ready:hover {
+        border: double green;
+        background: $boost;
     }
     GameCard.-coming-soon {
         border: solid $surface;
         opacity: 0.6;
     }
     """
+
+    can_focus = True
 
     def __init__(self, game_id: str, name: str, genre: str, description: str, ready: bool = False, **kwargs):
         super().__init__(**kwargs)
@@ -423,3 +438,13 @@ class GameCard(Static):
             f"{self._description[:60]}\n\n"
             f"{status}"
         )
+
+    def on_click(self) -> None:
+        """Post Selected message when a ready game is clicked."""
+        if self._ready:
+            self.post_message(self.Selected(self.game_id))
+
+    def on_key(self, event) -> None:
+        """Handle Enter key when focused."""
+        if event.key == "enter" and self._ready:
+            self.post_message(self.Selected(self.game_id))
