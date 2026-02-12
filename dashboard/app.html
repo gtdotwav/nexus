@@ -3,1415 +3,284 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEXUS - Gaming AI Agent Dashboard</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230a0e17' width='100' height='100'/><circle cx='50' cy='50' r='35' fill='none' stroke='%2300ffcc' stroke-width='3'/><circle cx='50' cy='50' r='25' fill='none' stroke='%2300ff88' stroke-width='2'/><circle cx='50' cy='50' r='5' fill='%2300ffcc'/></svg>">
+    <title>NEXUS Gaming Agent Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --primary: #00ffcc;
-            --secondary: #00ff88;
-            --tertiary: #00ffaa;
-            --danger: #ff3366;
-            --warning: #ffaa00;
-            --success: #00ff88;
-            --bg-dark: #0a0e17;
-            --bg-darker: #050609;
-            --bg-panel: #0f1419;
-            --text-primary: #e8f0ff;
-            --text-secondary: #a0b0c0;
-            --text-tertiary: #606b7a;
-            --border-glow: rgba(0, 255, 204, 0.3);
-            --border: rgba(0, 255, 204, 0.15);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        html, body {
-            width: 100%;
-            height: 100%;
-            background-color: var(--bg-dark);
-            color: var(--text-primary);
-            font-family: 'Courier New', monospace;
-            overflow: hidden;
-        }
-
-        body {
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* HEADER */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 20px;
-            background: linear-gradient(180deg, rgba(0, 255, 204, 0.05) 0%, transparent 100%);
-            border-bottom: 1px solid var(--border);
-            backdrop-filter: blur(10px);
-            font-size: 12px;
-            gap: 20px;
-            flex-shrink: 0;
-            height: 48px;
-        }
-
-        .header-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            font-weight: bold;
-            letter-spacing: 2px;
-            color: var(--primary);
-            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
-        }
-
-        .nexus-logo {
-            width: 20px;
-            height: 20px;
-            background: conic-gradient(from 0deg, var(--primary), var(--secondary), var(--primary));
-            border-radius: 2px;
-            animation: pulse-glow 2s ease-in-out infinite;
-        }
-
-        .header-status {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .status-badge {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
-            background-color: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-
-        .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--success);
-            box-shadow: 0 0 8px var(--success);
-            animation: pulse 1.5s ease-in-out infinite;
-        }
-
-        .status-indicator.disconnected {
-            background-color: var(--danger);
-            box-shadow: 0 0 8px var(--danger);
-            animation: pulse 0.5s ease-in-out infinite;
-        }
-
-        .session-timer {
-            font-variant-numeric: tabular-nums;
-        }
-
-        /* MAIN CONTAINER */
-        .container {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-            gap: 0;
-        }
-
-        /* LEFT SIDEBAR */
-        .left-sidebar {
-            display: flex;
-            flex-direction: column;
-            width: 320px;
-            background-color: var(--bg-darker);
-            border-right: 1px solid var(--border);
-            overflow-y: auto;
-            gap: 0;
-            flex-shrink: 0;
-        }
-
-        .panel {
-            background-color: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 12px;
-            margin: 10px;
-            font-size: 11px;
-        }
-
-        .panel-title {
-            font-size: 10px;
-            font-weight: bold;
-            color: var(--primary);
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-        }
-
-        /* CHARACTER PANEL */
-        .stat-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            align-items: center;
-        }
-
-        .stat-label {
-            color: var(--text-secondary);
-            font-size: 10px;
-        }
-
-        .stat-value {
-            color: var(--text-primary);
-            font-weight: bold;
-            font-variant-numeric: tabular-nums;
-        }
-
-        .bar-container {
-            width: 100%;
-            height: 18px;
-            background-color: var(--bg-darker);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            overflow: hidden;
-            margin-top: 4px;
-            position: relative;
-        }
-
-        .bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #00ff88 0%, #00ffcc 100%);
-            transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-            position: relative;
-        }
-
-        .bar-fill::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-            animation: shimmer 2s infinite;
-        }
-
-        .bar-hp {
-            background: linear-gradient(90deg, #ff3366 0%, #ff6688 100%);
-        }
-
-        .bar-hp.healthy {
-            background: linear-gradient(90deg, #00ff88 0%, #00ffcc 100%);
-        }
-
-        .bar-mana {
-            background: linear-gradient(90deg, #3366ff 0%, #00ffcc 100%);
-        }
-
-        .bar-label {
-            position: absolute;
-            top: 50%;
-            left: 4px;
-            transform: translateY(-50%);
-            font-size: 9px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
-            z-index: 2;
-        }
-
-        /* METRICS CARDS */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-        }
-
-        .metric-card {
-            background-color: var(--bg-darker);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            padding: 8px;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-
-        .metric-card:hover {
-            border-color: var(--primary);
-            box-shadow: 0 0 8px rgba(0, 255, 204, 0.2);
-        }
-
-        .metric-value {
-            font-size: 13px;
-            font-weight: bold;
-            color: var(--primary);
-            font-variant-numeric: tabular-nums;
-            margin-bottom: 2px;
-        }
-
-        .metric-label {
-            font-size: 9px;
-            color: var(--text-tertiary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        /* CENTER PANELS */
-        .center-panels {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            gap: 0;
-            overflow: hidden;
-        }
-
-        .row-panels {
-            display: flex;
-            gap: 0;
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .col-panels {
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .panel-flex {
-            background-color: var(--bg-panel);
-            border: 1px solid var(--border);
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            margin: 8px;
-            border-radius: 4px;
-            min-height: 0;
-        }
-
-        /* COMBAT PANEL */
-        .battle-item {
-            background-color: var(--bg-darker);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            padding: 6px;
-            margin-bottom: 6px;
-            font-size: 10px;
-        }
-
-        .battle-name {
-            color: var(--primary);
-            font-weight: bold;
-            margin-bottom: 3px;
-        }
-
-        .threat-level {
-            display: inline-block;
-            padding: 2px 6px;
-            background-color: var(--bg-panel);
-            border-radius: 2px;
-            font-size: 9px;
-            margin-top: 4px;
-        }
-
-        .threat-none {
-            color: var(--success);
-        }
-
-        .threat-low {
-            color: var(--warning);
-        }
-
-        .threat-medium {
-            color: #ff9900;
-        }
-
-        .threat-high {
-            color: var(--danger);
-        }
-
-        .combat-mode-badge {
-            display: inline-block;
-            padding: 3px 8px;
-            background-color: rgba(0, 255, 204, 0.1);
-            border: 1px solid var(--primary);
-            border-radius: 2px;
-            font-size: 9px;
-            color: var(--primary);
-            text-transform: uppercase;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-            animation: mode-pulse 0.5s ease;
-        }
-
-        /* CONSCIOUSNESS PANEL */
-        .emotion-display {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-            padding: 8px;
-            background-color: var(--bg-darker);
-            border-radius: 2px;
-            border: 1px solid var(--border);
-        }
-
-        .emotion-emoji {
-            font-size: 20px;
-        }
-
-        .emotion-text {
-            color: var(--text-primary);
-            font-weight: bold;
-        }
-
-        .goals-list {
-            font-size: 9px;
-            color: var(--text-secondary);
-            margin: 6px 0;
-        }
-
-        .goal-item {
-            padding: 4px 0;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .goal-item:last-child {
-            border-bottom: none;
-        }
-
-        .goal-priority {
-            display: inline-block;
-            background-color: var(--bg-panel);
-            padding: 2px 4px;
-            border-radius: 2px;
-            font-size: 8px;
-            color: var(--primary);
-        }
-
-        .mastery-bar {
-            margin: 6px 0;
-        }
-
-        .mastery-label {
-            display: flex;
-            justify-content: space-between;
-            font-size: 9px;
-            color: var(--text-secondary);
-            margin-bottom: 2px;
-        }
-
-        .mastery-value {
-            color: var(--primary);
-            font-weight: bold;
-        }
-
-        /* REASONING PANEL */
-        .reasoning-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 6px;
-            margin: 6px 0;
-            font-size: 9px;
-            color: var(--text-secondary);
-        }
-
-        .reasoning-icon {
-            flex-shrink: 0;
-            width: 16px;
-            text-align: center;
-            color: var(--primary);
-            font-weight: bold;
-        }
-
-        .danger-arrow {
-            font-size: 12px;
-            display: inline-block;
-        }
-
-        .warning-text {
-            color: var(--danger);
-            background-color: rgba(255, 51, 102, 0.1);
-            padding: 2px 4px;
-            border-radius: 2px;
-            border-left: 2px solid var(--danger);
-            margin: 4px 0;
-        }
-
-        .opportunity-text {
-            color: var(--success);
-            background-color: rgba(0, 255, 136, 0.1);
-            padding: 2px 4px;
-            border-radius: 2px;
-            border-left: 2px solid var(--success);
-            margin: 4px 0;
-        }
-
-        /* EXPLORER PANEL */
-        .explorer-status {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-            padding: 6px;
-            background-color: var(--bg-darker);
-            border-radius: 2px;
-            border: 1px solid var(--border);
-        }
-
-        .active-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            background-color: rgba(0, 255, 136, 0.1);
-            border: 1px solid var(--success);
-            border-radius: 2px;
-            color: var(--success);
-            font-size: 9px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-
-        .inactive-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            background-color: rgba(160, 176, 192, 0.1);
-            border: 1px solid var(--text-tertiary);
-            border-radius: 2px;
-            color: var(--text-tertiary);
-            font-size: 9px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-
-        /* MINIMAP */
-        .minimap-container {
-            background-color: var(--bg-darker);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 200px;
-        }
-
-        #minimapCanvas {
-            display: block;
-            background-color: var(--bg-darker);
-        }
-
-        /* CONTROLS PANEL */
-        .controls-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .button-group {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-        }
-
-        button {
-            background-color: var(--bg-darker);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 6px 10px;
-            border-radius: 2px;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            transition: all 0.2s ease;
-            font-weight: bold;
-        }
-
-        button:hover {
-            border-color: var(--primary);
-            color: var(--primary);
-            box-shadow: 0 0 8px rgba(0, 255, 204, 0.3);
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        button.primary {
-            background-color: rgba(0, 255, 204, 0.1);
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-
-        button.primary:hover {
-            background-color: rgba(0, 255, 204, 0.2);
-            box-shadow: 0 0 12px rgba(0, 255, 204, 0.5);
-        }
-
-        button:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            border-color: var(--text-tertiary);
-            color: var(--text-tertiary);
-        }
-
-        select {
-            background-color: var(--bg-darker);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 6px 10px;
-            border-radius: 2px;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        select:hover {
-            border-color: var(--primary);
-        }
-
-        /* LOG STREAM */
-        .log-stream {
-            background-color: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 8px;
-            margin: 8px;
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-        }
-
-        .log-messages {
-            flex: 1;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column-reverse;
-            gap: 2px;
-            font-size: 10px;
-            font-variant-numeric: tabular-nums;
-        }
-
-        .log-entry {
-            padding: 3px 6px;
-            border-radius: 2px;
-            background-color: var(--bg-darker);
-            border-left: 2px solid var(--text-tertiary);
-            color: var(--text-secondary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            animation: log-slide-in 0.3s ease;
-        }
-
-        .log-entry.info {
-            border-left-color: var(--primary);
-            color: var(--text-primary);
-        }
-
-        .log-entry.warning {
-            border-left-color: var(--warning);
-            color: var(--warning);
-        }
-
-        .log-entry.error {
-            border-left-color: var(--danger);
-            color: var(--danger);
-        }
-
-        .log-entry.success {
-            border-left-color: var(--success);
-            color: var(--success);
-        }
-
-        /* ANIMATIONS */
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 204, 0.5); }
-            50% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.8); }
-        }
-
-        @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-
-        @keyframes mode-pulse {
-            0% { background-color: rgba(0, 255, 204, 0.3); }
-            100% { background-color: rgba(0, 255, 204, 0.1); }
-        }
-
-        @keyframes log-slide-in {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes hp-flash {
-            0%, 100% { box-shadow: 0 0 0 rgba(255, 51, 102, 0); }
-            50% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.6); }
-        }
-
-        .bar-container.flash {
-            animation: hp-flash 0.4s ease;
-        }
-
-        /* SCROLLBAR STYLING */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background-color: var(--border);
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background-color: var(--primary);
-            box-shadow: 0 0 6px rgba(0, 255, 204, 0.3);
-        }
-
-        /* RESPONSIVE */
-        @media (max-width: 1200px) {
-            .left-sidebar {
-                width: 260px;
-            }
-            .panel {
-                margin: 6px;
-                padding: 10px;
-            }
-        }
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #111118;
+            --bg-tertiary: #1a1a22;
+            --border: rgba(255,255,255,0.06);
+            --border-light: rgba(255,255,255,0.12);
+            --text-primary: #f0f0f5;
+            --text-secondary: #a0a0b0;
+            --accent-cyan: #00f0ff;
+            --accent-purple: #a855f7;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --accent-orange: #f97316;
+            --accent-gold: #fbbf24;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif; background: var(--bg-primary); color: var(--text-primary); overflow: hidden; }
+        html, body { width: 100%; height: 100%; }
+        .container { display: flex; width: 100%; height: 100%; }
+        .sidebar { width: 56px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 12px; transition: width 0.3s ease; position: relative; z-index: 100; }
+        .sidebar.expanded { width: 220px; align-items: flex-start; padding: 16px 12px; }
+        .sidebar-toggle { width: 40px; height: 40px; border-radius: 8px; background: transparent; border: 1px solid var(--border-light); color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: all 0.2s ease; margin-bottom: 8px; }
+        .sidebar-toggle:hover { background: var(--bg-tertiary); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .sidebar-nav { display: flex; flex-direction: column; gap: 8px; width: 100%; flex: 1; }
+        .nav-item { width: 40px; height: 40px; border-radius: 8px; background: transparent; border: 1px solid transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; transition: all 0.2s ease; position: relative; flex-shrink: 0; }
+        .sidebar.expanded .nav-item { width: 100%; justify-content: flex-start; padding: 0 12px; gap: 12px; }
+        .nav-item:hover { background: var(--bg-tertiary); border-color: var(--border-light); color: var(--text-primary); }
+        .nav-item.active { background: rgba(0, 240, 255, 0.1); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .nav-label { display: none; font-size: 14px; font-weight: 500; }
+        .sidebar.expanded .nav-label { display: block; }
+        .sidebar-footer { width: 40px; height: 40px; border-radius: 8px; background: rgba(168, 85, 247, 0.1); border: 1px solid var(--accent-purple); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--accent-purple); font-size: 18px; transition: all 0.2s ease; }
+        .sidebar.expanded .sidebar-footer { width: 100%; }
+        .sidebar-footer:hover { background: rgba(168, 85, 247, 0.2); }
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { height: 56px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; gap: 24px; }
+        .topbar-logo { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; letter-spacing: 2px; }
+        .nexus-logo { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple)); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--bg-primary); font-size: 16px; box-shadow: 0 0 20px rgba(0, 240, 255, 0.4); animation: nexus-glow 2s ease-in-out infinite; }
+        @keyframes nexus-glow { 0%, 100% { box-shadow: 0 0 20px rgba(0, 240, 255, 0.4); } 50% { box-shadow: 0 0 30px rgba(0, 240, 255, 0.6); } }
+        .topbar-center { display: flex; align-items: center; gap: 24px; }
+        .status-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-red); transition: all 0.3s ease; }
+        .status-dot.connected { background: var(--accent-cyan); animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.7); opacity: 1; } 50% { box-shadow: 0 0 0 6px rgba(0, 240, 255, 0.3); opacity: 1; } }
+        .mode-badge { padding: 4px 12px; border-radius: 4px; background: rgba(168, 85, 247, 0.1); border: 1px solid var(--accent-purple); color: var(--accent-purple); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .uptime { font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .pages { flex: 1; overflow: auto; position: relative; }
+        .page { display: none; width: 100%; height: 100%; padding: 24px; overflow-y: auto; }
+        .page.active { display: flex; flex-direction: column; }
+        .games-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; padding-bottom: 20px; }
+        .game-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.3s ease; display: flex; flex-direction: column; gap: 16px; }
+        .game-card:hover { border-color: var(--border-light); background: var(--bg-tertiary); transform: translateY(-4px); }
+        .game-card.ready { border-color: rgba(0, 240, 255, 0.2); }
+        .game-card.ready:hover { border-color: var(--accent-cyan); box-shadow: 0 0 20px rgba(0, 240, 255, 0.1); }
+        .game-header { display: flex; align-items: flex-start; gap: 12px; }
+        .game-icon { width: 48px; height: 48px; border-radius: 8px; background: rgba(0, 240, 255, 0.1); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; }
+        .game-card.ready .game-icon { background: rgba(0, 240, 255, 0.2); }
+        .game-card.disabled .game-icon { background: rgba(128, 128, 128, 0.1); }
+        .game-info { flex: 1; }
+        .game-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+        .game-genre { font-size: 12px; color: var(--text-secondary); }
+        .game-description { font-size: 13px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 12px; }
+        .game-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .tag { padding: 4px 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); font-size: 11px; color: var(--text-secondary); }
+        .game-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; background: rgba(255, 255, 255, 0.02); border-radius: 8px; margin-bottom: 12px; font-size: 12px; }
+        .stat-row { display: flex; justify-content: space-between; }
+        .stat-label { color: var(--text-secondary); }
+        .stat-value { color: var(--accent-cyan); font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+        .game-action { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-primary); font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; letter-spacing: 0.5px; }
+        .game-card.ready .game-action { background: rgba(0, 240, 255, 0.1); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .game-card.ready .game-action:hover { background: rgba(0, 240, 255, 0.2); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3); }
+        .game-card.disabled .game-action { color: var(--text-secondary); cursor: not-allowed; opacity: 0.5; }
+        .monitor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; padding-bottom: 20px; }
+        .panel { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .panel-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 4px; }
+        .vitals-container { display: flex; flex-direction: column; gap: 16px; }
+        .vital { display: flex; flex-direction: column; gap: 8px; }
+        .vital-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .vital-label { color: var(--text-secondary); font-weight: 500; }
+        .vital-value { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 14px; }
+        .vital-bar { width: 100%; height: 24px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); position: relative; }
+        .vital-fill { height: 100%; width: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); border-radius: 6px; transition: width 0.2s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; color: var(--bg-primary); font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+        .vital-fill.critical { background: linear-gradient(90deg, var(--accent-red), #ff6b6b); }
+        .vital-fill.warning { background: linear-gradient(90deg, var(--accent-orange), #fbbf24); }
+        .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .metric-card { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+        .metric-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; color: var(--accent-cyan); }
+        .metric-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+        .combat-section { display: flex; flex-direction: column; gap: 12px; }
+        .combat-mode { padding: 10px 14px; border-radius: 6px; background: rgba(168, 85, 247, 0.1); border: 1px solid var(--accent-purple); color: var(--accent-purple); font-weight: 600; font-size: 13px; text-align: center; }
+        .threat-level { padding: 10px 14px; border-radius: 6px; font-weight: 600; font-size: 13px; text-align: center; border: 1px solid transparent; }
+        .threat-level.low { background: rgba(34, 197, 94, 0.1); border-color: var(--accent-green); color: var(--accent-green); }
+        .threat-level.medium { background: rgba(249, 115, 22, 0.1); border-color: var(--accent-orange); color: var(--accent-orange); }
+        .threat-level.high { background: rgba(239, 68, 68, 0.1); border-color: var(--accent-red); color: var(--accent-red); }
+        .target-info { padding: 10px 14px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; font-size: 13px; color: var(--text-secondary); }
+        .battle-list { display: flex; flex-direction: column; gap: 10px; max-height: 200px; overflow-y: auto; }
+        .battle-entry { padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; gap: 6px; }
+        .battle-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+        .battle-hp-bar { width: 100%; height: 12px; background: rgba(255, 255, 255, 0.05); border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
+        .battle-hp-fill { height: 100%; background: linear-gradient(90deg, var(--accent-red), #ff6b6b); border-radius: 3px; transition: width 0.2s ease; }
+        .brain-metrics { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        .brain-row { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border); font-size: 12px; }
+        .brain-label { color: var(--text-secondary); }
+        .brain-value { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent-cyan); }
+        .breaker-status { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+        .breaker-status.closed { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .breaker-status.open { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .breaker-status.half { background: rgba(249, 115, 22, 0.2); color: var(--accent-orange); border: 1px solid var(--accent-orange); }
+        .consciousness-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .emotion { display: flex; flex-direction: column; gap: 6px; }
+        .emotion-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+        .emotion-bar { width: 100%; height: 16px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+        .emotion-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 4px; font-size: 9px; font-weight: 600; color: var(--bg-primary); }
+        .emotion-fill.confidence { background: linear-gradient(90deg, #0ea5e9, #06b6d4); }
+        .emotion-fill.determination { background: linear-gradient(90deg, #8b5cf6, #a855f7); }
+        .emotion-fill.focus { background: linear-gradient(90deg, #eab308, #fbbf24); }
+        .emotion-fill.aggression { background: linear-gradient(90deg, #dc2626, #ef4444); }
+        .emotion-fill.caution { background: linear-gradient(90deg, #16a34a, #22c55e); }
+        .event-stream { display: flex; flex-direction: column-reverse; gap: 8px; max-height: 300px; overflow-y: auto; }
+        .event-item { padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 6px; font-size: 12px; display: flex; gap: 8px; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        .event-item.kill { border-left-color: var(--accent-green); }
+        .event-item.kill .event-icon { color: var(--accent-green); }
+        .event-item.death { border-left-color: var(--accent-red); }
+        .event-item.death .event-icon { color: var(--accent-red); }
+        .event-item.heal { border-left-color: var(--accent-cyan); }
+        .event-item.heal .event-icon { color: var(--accent-cyan); }
+        .event-item.loot { border-left-color: var(--accent-gold); }
+        .event-item.loot .event-icon { color: var(--accent-gold); }
+        .event-item.strategic { border-left-color: var(--accent-purple); }
+        .event-item.strategic .event-icon { color: var(--accent-purple); }
+        .event-item.close-call { border-left-color: var(--accent-orange); }
+        .event-item.close-call .event-icon { color: var(--accent-orange); }
+        .event-icon { flex-shrink: 0; width: 16px; text-align: center; font-weight: 700; }
+        .event-content { flex: 1; }
+        .event-text { color: var(--text-primary); margin-bottom: 2px; }
+        .event-time { font-size: 10px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+        .map-container { display: flex; flex-direction: column; gap: 16px; height: 100%; }
+        .map-controls { display: flex; gap: 12px; align-items: center; }
+        .map-toggle { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font-size: 12px; font-weight: 600; text-transform: uppercase; transition: all 0.2s ease; }
+        .map-toggle.active { background: rgba(0, 240, 255, 0.1); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .map-toggle:hover { border-color: var(--border-light); }
+        .map-canvas-wrapper { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        #mapCanvas { display: block; background: var(--bg-tertiary); }
+        .skills-container { display: flex; flex-direction: column; gap: 20px; }
+        .skills-list { display: flex; flex-direction: column; gap: 12px; }
+        .skill-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 16px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; gap: 16px; }
+        .skill-item:hover { border-color: var(--border-light); background: var(--bg-tertiary); }
+        .skill-item.active { background: rgba(0, 240, 255, 0.1); border-color: var(--accent-cyan); }
+        .skill-icon { width: 40px; height: 40px; border-radius: 6px; background: rgba(0, 240, 255, 0.1); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .skill-item.active .skill-icon { background: rgba(0, 240, 255, 0.2); color: var(--accent-cyan); }
+        .skill-info { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .skill-header { display: flex; justify-content: space-between; align-items: center; }
+        .skill-name { font-weight: 600; font-size: 14px; }
+        .skill-version { font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+        .skill-category { font-size: 12px; color: var(--text-secondary); }
+        .skill-score-container { display: flex; align-items: center; gap: 8px; }
+        .skill-score-bar { flex: 1; height: 6px; background: rgba(255, 255, 255, 0.05); border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
+        .skill-score-fill { height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple)); border-radius: 3px; transition: width 0.3s ease; }
+        .skill-score-value { font-size: 11px; color: var(--accent-cyan); font-weight: 600; font-family: 'JetBrains Mono', monospace; min-width: 30px; text-align: right; }
+        .exploration-controls { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+        .control-group { display: flex; flex-direction: column; gap: 12px; }
+        .control-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+        .control-buttons { display: flex; gap: 12px; }
+        .control-button { flex: 1; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-primary); cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s ease; }
+        .control-button:hover { border-color: var(--border-light); background: var(--bg-tertiary); }
+        .control-button.active { background: rgba(0, 240, 255, 0.1); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .strategy-selector { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font-size: 13px; cursor: pointer; font-family: inherit; }
+        .settings-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .settings-group { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+        .settings-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 16px; }
+        .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+        .settings-row:last-child { border-bottom: none; }
+        .settings-label { font-size: 13px; color: var(--text-primary); }
+        .settings-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-cyan); font-weight: 600; }
+        .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+        .mode-button { padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-primary); cursor: pointer; font-weight: 600; font-size: 12px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s ease; }
+        .mode-button:hover { border-color: var(--border-light); background: var(--bg-tertiary); }
+        .mode-button.active { background: rgba(168, 85, 247, 0.1); border-color: var(--accent-purple); color: var(--accent-purple); }
+        .save-button { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--accent-cyan); background: rgba(0, 240, 255, 0.1); color: var(--accent-cyan); cursor: pointer; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s ease; margin-top: 12px; }
+        .save-button:hover { background: rgba(0, 240, 255, 0.2); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3); }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+        @media (max-width: 1024px) { .monitor-grid { grid-template-columns: 1fr; } .games-container { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
-    <!-- HEADER -->
-    <div class="header">
-        <div class="header-title">
-            <div class="nexus-logo"></div>
-            NEXUS AI AGENT
-        </div>
-        <div class="header-status">
-            <div class="status-badge">
-                <div class="status-indicator" id="connectionStatus"></div>
-                <span id="connectionText">CONNECTING</span>
-            </div>
-            <div class="status-badge">
-                <span id="sessionTimer">0:00</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- MAIN CONTAINER -->
     <div class="container">
-        <!-- LEFT SIDEBAR -->
-        <div class="left-sidebar">
-            <!-- CHARACTER PANEL -->
-            <div class="panel">
-                <div class="panel-title">Character</div>
-                <div class="stat-row">
-                    <span class="stat-label">Level</span>
-                    <span class="stat-value" id="charLevel">—</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Class</span>
-                    <span class="stat-value" id="charClass">—</span>
-                </div>
-
-                <div class="bar-container" id="hpBar">
-                    <div class="bar-fill bar-hp healthy" style="width: 100%;">
-                        <div class="bar-label" id="hpLabel">100/100</div>
-                    </div>
-                </div>
-
-                <div class="bar-container" id="manaBar" style="margin-top: 6px;">
-                    <div class="bar-fill bar-mana" style="width: 100%;">
-                        <div class="bar-label" id="manaLabel">100/100</div>
-                    </div>
-                </div>
-
-                <div class="stat-row" style="margin-top: 8px;">
-                    <span class="stat-label">Position</span>
-                </div>
-                <div style="font-size: 9px; color: var(--text-secondary); margin-bottom: 8px;">
-                    <span id="posX">X: —</span> | <span id="posY">Y: —</span> | <span id="posZ">Z: —</span>
-                </div>
-            </div>
-
-            <!-- SESSION METRICS -->
-            <div class="panel">
-                <div class="panel-title">Session Metrics</div>
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-value" id="xpHr">—</div>
-                        <div class="metric-label">XP/hr</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value" id="goldHr">—</div>
-                        <div class="metric-label">Gold/hr</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value" id="kills">—</div>
-                        <div class="metric-label">Kills</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value" id="deaths">—</div>
-                        <div class="metric-label">Deaths</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value" id="closeCalls">—</div>
-                        <div class="metric-label">Close Calls</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value" id="duration">—</div>
-                        <div class="metric-label">Duration</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- EXPLORER STATS -->
-            <div class="panel">
-                <div class="panel-title">Explorer</div>
-                <div class="explorer-status">
-                    <span id="explorerBadge" class="inactive-badge">IDLE</span>
-                    <span style="font-size: 9px; color: var(--text-secondary);" id="explorerStrategy">—</span>
-                </div>
-                <div style="font-size: 9px; color: var(--text-secondary); line-height: 1.6;">
-                    <div>Explored: <strong id="explorerTotal" style="color: var(--primary);">—</strong></div>
-                    <div>Floors: <strong id="explorerFloors" style="color: var(--primary);">—</strong></div>
-                    <div>Landmarks: <strong id="explorerLandmarks" style="color: var(--primary);">—</strong></div>
-                    <div>Zones: <strong id="explorerZones" style="color: var(--primary);">—</strong></div>
-                </div>
-            </div>
+        <div class="sidebar">
+            <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-page="games"><span>🎮</span><span class="nav-label">Games</span></button>
+                <button class="nav-item" data-page="monitor"><span>📊</span><span class="nav-label">Monitor</span></button>
+                <button class="nav-item" data-page="map"><span>🗺️</span><span class="nav-label">Map</span></button>
+                <button class="nav-item" data-page="skills"><span>⚡</span><span class="nav-label">Skills</span></button>
+                <button class="nav-item" data-page="settings"><span>⚙️</span><span class="nav-label">Settings</span></button>
+            </nav>
+            <button class="sidebar-footer" id="aboutBtn" title="About">?</button>
         </div>
-
-        <!-- CENTER CONTENT -->
-        <div class="center-panels">
-            <!-- TOP ROW: Combat + Consciousness -->
-            <div class="row-panels" style="flex: 0.6;">
-                <!-- COMBAT PANEL -->
-                <div class="panel-flex" style="flex: 0.5;">
-                    <div class="panel-title">Combat</div>
-                    <div id="combatMode" class="combat-mode-badge">—</div>
-                    <div style="font-size: 9px; color: var(--text-secondary); margin-bottom: 8px;">
-                        Target: <strong id="targetName" style="color: var(--primary);">None</strong>
-                    </div>
-                    <div style="font-size: 9px; margin-bottom: 8px;">
-                        <span class="stat-label">Threat:</span>
-                        <span id="threatLevel" class="threat-none">NONE</span>
-                    </div>
-                    <div style="flex: 1; overflow-y: auto;">
-                        <div id="battleList"></div>
-                    </div>
+        <div class="main-content">
+            <div class="topbar">
+                <div class="topbar-logo"><div class="nexus-logo">N</div><span>NEXUS</span></div>
+                <div class="topbar-center">
+                    <div class="status-indicator"><div class="status-dot" id="statusDot"></div><span id="connectionStatus">Connecting...</span></div>
+                    <div class="mode-badge" id="modeBadge">CONNECTED</div>
+                    <div class="uptime" id="uptime">UP 00:00:00</div>
                 </div>
-
-                <!-- CONSCIOUSNESS PANEL -->
-                <div class="panel-flex" style="flex: 0.5;">
-                    <div class="panel-title">Consciousness</div>
-                    <div class="emotion-display" id="emotionDisplay">
-                        <span class="emotion-emoji">😐</span>
-                        <span class="emotion-text" id="emotionText">neutral</span>
-                    </div>
-
-                    <div style="font-size: 9px; color: var(--text-secondary); margin-top: 8px;">Mastery:</div>
-                    <div id="masteryBars"></div>
-
-                    <div style="font-size: 9px; color: var(--text-secondary); margin-top: 8px;">Active Goals:</div>
-                    <div class="goals-list" id="goalsList"></div>
-                </div>
+                <div class="topbar-right"></div>
             </div>
-
-            <!-- MIDDLE ROW: Reasoning + Minimap -->
-            <div class="row-panels" style="flex: 0.65;">
-                <!-- REASONING PANEL -->
-                <div class="panel-flex" style="flex: 0.4;">
-                    <div class="panel-title">Reasoning</div>
-                    <div class="reasoning-item">
-                        <span class="reasoning-icon" id="dangerArrow">→</span>
-                        <span>Danger: <strong id="dangerTrend" style="color: var(--primary);">—</strong></span>
-                    </div>
-                    <div class="reasoning-item">
-                        <span class="reasoning-icon">⚔</span>
-                        <span>Difficulty: <strong id="creatureDiff" style="color: var(--primary);">—</strong></span>
-                    </div>
-                    <div class="reasoning-item">
-                        <span class="reasoning-icon">📍</span>
-                        <span>Topology: <strong id="topology" style="color: var(--primary);">—</strong></span>
-                    </div>
-                    <div class="reasoning-item">
-                        <span class="reasoning-icon">⚡</span>
-                        <span>Efficiency: <strong id="efficiency" style="color: var(--primary);">—</strong></span>
-                    </div>
-                    <div style="margin-top: 8px; font-size: 9px;">
-                        <strong style="color: var(--text-secondary);">Recommendation:</strong>
-                        <div id="recommendation" style="color: var(--primary); margin-top: 3px;">—</div>
-                    </div>
-                    <div id="warningsList" style="margin-top: 6px;"></div>
-                    <div id="opportunitiesList" style="margin-top: 6px;"></div>
-                </div>
-
-                <!-- MINIMAP -->
-                <div class="panel-flex" style="flex: 0.6;">
-                    <div class="panel-title">Spatial Memory</div>
-                    <div class="minimap-container">
-                        <canvas id="minimapCanvas" width="300" height="280"></canvas>
+            <div class="pages">
+                <div class="page active" id="page-games"><div class="games-container" id="gamesContainer"></div></div>
+                <div class="page" id="page-monitor">
+                    <div class="monitor-grid">
+                        <div class="panel"><div class="panel-title">Vitals</div><div class="vitals-container"><div class="vital"><div class="vital-header"><span class="vital-label">Hit Points</span><span class="vital-value" id="hpValue">100/100</span></div><div class="vital-bar"><div class="vital-fill" id="hpFill" style="width: 100%;">100%</div></div></div><div class="vital"><div class="vital-header"><span class="vital-label">Mana</span><span class="vital-value" id="manaValue">100/100</span></div><div class="vital-bar"><div class="vital-fill" id="manaFill" style="width: 100%;">100%</div></div></div></div></div>
+                        <div class="panel"><div class="panel-title">Session Metrics</div><div class="metrics-grid"><div class="metric-card"><div class="metric-value" id="xpHr">0</div><div class="metric-label">XP/HR</div></div><div class="metric-card"><div class="metric-value" id="goldHr">0</div><div class="metric-label">GOLD/HR</div></div><div class="metric-card"><div class="metric-value" id="kills">0</div><div class="metric-label">KILLS</div></div><div class="metric-card"><div class="metric-value" id="deaths">0</div><div class="metric-label">DEATHS</div></div><div class="metric-card"><div class="metric-value" id="closeCalls">0</div><div class="metric-label">CLOSE CALLS</div></div><div class="metric-card"><div class="metric-value" id="duration">00:00:00</div><div class="metric-label">DURATION</div></div></div></div>
+                        <div class="panel"><div class="panel-title">Combat</div><div class="combat-section"><div class="combat-mode" id="combatMode">HUNTING</div><div class="threat-level low" id="threatLevel">LOW</div><div class="target-info" id="targetInfo">No current target</div><div class="battle-list" id="battleList"></div></div></div>
+                        <div class="panel"><div class="panel-title">Brain Performance</div><div class="brain-metrics"><div class="brain-row"><span class="brain-label">Reactive Latency</span><span class="brain-value" id="reactiveLatency">0ms</span></div><div class="brain-row"><span class="brain-label">Strategic Latency</span><span class="brain-value" id="strategicLatency">0ms</span></div><div class="brain-row"><span class="brain-label">Circuit Breaker</span><span class="brain-value"><span class="breaker-status closed" id="breakerStatus">CLOSED</span></span></div><div class="brain-row"><span class="brain-label">API Calls</span><span class="brain-value" id="apiCalls">0</span></div><div class="brain-row"><span class="brain-label">Skipped Calls</span><span class="brain-value" id="skippedCalls">0</span></div></div></div>
+                        <div class="panel"><div class="panel-title">Consciousness</div><div class="consciousness-grid"><div class="emotion"><div class="emotion-label">Confidence</div><div class="emotion-bar"><div class="emotion-fill confidence" id="confFill" style="width: 75%;"></div></div></div><div class="emotion"><div class="emotion-label">Determination</div><div class="emotion-bar"><div class="emotion-fill determination" id="detFill" style="width: 80%;"></div></div></div><div class="emotion"><div class="emotion-label">Focus</div><div class="emotion-bar"><div class="emotion-fill focus" id="focFill" style="width: 85%;"></div></div></div><div class="emotion"><div class="emotion-label">Aggression</div><div class="emotion-bar"><div class="emotion-fill aggression" id="agrFill" style="width: 60%;"></div></div></div><div class="emotion"><div class="emotion-label">Caution</div><div class="emotion-bar"><div class="emotion-fill caution" id="cauFill" style="width: 70%;"></div></div></div></div></div>
+                        <div class="panel" style="grid-column: 1 / -1;"><div class="panel-title">Event Stream</div><div class="event-stream" id="eventStream"></div></div>
                     </div>
                 </div>
-            </div>
-
-            <!-- BOTTOM ROW: Controls + Log -->
-            <div class="row-panels" style="flex: 0.75;">
-                <!-- CONTROLS -->
-                <div class="panel-flex" style="flex: 0.3;">
-                    <div class="panel-title">Controls</div>
-                    <div class="controls-panel">
-                        <div class="button-group">
-                            <button class="primary" id="btnFrontier">▸ Frontier</button>
-                            <button class="primary" id="btnDeep">▸ Deep</button>
+                <div class="page" id="page-map">
+                    <div class="map-container">
+                        <div class="map-controls">
+                            <button class="map-toggle active" data-mode="danger">Danger</button>
+                            <button class="map-toggle" data-mode="value">Value</button>
+                            <button class="map-toggle" data-mode="explored">Explored</button>
                         </div>
-                        <div class="button-group">
-                            <button class="primary" id="btnSafe">▸ Safe</button>
-                            <button class="primary" id="btnValue">▸ Value</button>
-                        </div>
-                        <button class="primary" style="width: 100%;" id="btnStop">⏹ Stop</button>
-                        <button id="btnSaveMap" style="width: 100%;">💾 Save Map</button>
-
-                        <select id="modeSelect" style="width: 100%; margin-top: 6px;">
-                            <option value="">Mode</option>
-                            <option value="HUNTING">Hunting</option>
-                            <option value="EXPLORING">Exploring</option>
-                            <option value="RECOVERY">Recovery</option>
-                            <option value="IDLE">Idle</option>
-                        </select>
+                        <div class="map-canvas-wrapper"><canvas id="mapCanvas"></canvas></div>
                     </div>
                 </div>
-
-                <!-- LOG STREAM -->
-                <div class="log-stream" style="flex: 0.7;">
-                    <div class="panel-title">Event Log</div>
-                    <div class="log-messages" id="logStream"></div>
+                <div class="page" id="page-skills">
+                    <div class="skills-container">
+                        <div class="skills-list" id="skillsList"></div>
+                        <div class="exploration-controls">
+                            <div class="control-group"><div class="control-label">Exploration</div><div class="control-buttons"><button class="control-button" id="exploreStart">Start</button><button class="control-button" id="exploreStop">Stop</button></div></div>
+                            <div class="control-group"><div class="control-label">Strategy</div><select class="strategy-selector" id="strategySelect"><option>Breadth First</option><option>Depth First</option><option>Danger Aware</option></select></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="page" id="page-settings">
+                    <div class="settings-container">
+                        <div class="settings-group"><div class="settings-title">Agent Mode</div><div class="mode-grid" id="modeGrid"></div></div>
+                        <div class="settings-group"><div class="settings-title">Configuration</div><div id="configDisplay"></div><button class="save-button">Save Config</button></div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
     <script>
-        // ============================================================================
-        // CONFIGURATION & STATE
-        // ============================================================================
-        const WS_URL = 'ws://localhost:8420/ws';
-        const MAX_LOG_ENTRIES = 50;
-        const MINIMAP_TILE_SIZE = 8;
-        const MINIMAP_RADIUS = 50;
-
-        let ws = null;
-        let reconnectAttempts = 0;
-        const MAX_RECONNECT_ATTEMPTS = 10;
-        let reconnectDelay = 1000;
-
-        let appState = {
-            connected: false,
-            sessionStart: null,
-            lastUpdate: Date.now(),
-            character: { hp: 100, mana: 100, position: { x: 0, y: 0, z: 0 } },
-            combat: { mode: 'IDLE', threat: 'NONE', target: null, battle_list: [] },
-            session: { duration_min: 0, xp_hr: 0, gold_hr: 0, deaths: 0, kills: 0, close_calls: 0 },
-            consciousness: { emotion: 'neutral', mastery: {}, goals: [] },
-            reasoning: { danger_trend: 'stable', creature_difficulty: 'unknown', topology: 'unknown' },
-            explorer: { active: false, strategy: null },
-            spatial_memory: { total_explored: 0, floors: 0, landmarks: 0, zones: 0 }
-        };
-
-        const emotionMap = {
-            'neutral': '😐',
-            'focused': '🎯',
-            'cautious': '⚠️',
-            'aggressive': '💢',
-            'anxious': '😰',
-            'confident': '💪',
-            'strategic': '🧠',
-            'curious': '🔍'
-        };
-
-        // ============================================================================
-        // WEBSOCKET MANAGEMENT
-        // ============================================================================
-        function connectWebSocket() {
-            try {
-                ws = new WebSocket(WS_URL);
-
-                ws.onopen = () => {
-                    console.log('WebSocket connected');
-                    appState.connected = true;
-                    reconnectAttempts = 0;
-                    reconnectDelay = 1000;
-                    updateConnectionStatus(true);
-                    addLog('Connected to NEXUS server', 'success');
-                };
-
-                ws.onmessage = (event) => {
-                    handleWebSocketMessage(JSON.parse(event.data));
-                };
-
-                ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    addLog('WebSocket error occurred', 'error');
-                };
-
-                ws.onclose = () => {
-                    console.log('WebSocket disconnected');
-                    appState.connected = false;
-                    updateConnectionStatus(false);
-                    addLog('Disconnected from server', 'warning');
-                    attemptReconnect();
-                };
-            } catch (error) {
-                console.error('Failed to connect WebSocket:', error);
-                attemptReconnect();
-            }
-        }
-
-        function attemptReconnect() {
-            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                reconnectAttempts++;
-                const delay = reconnectDelay * Math.pow(1.5, reconnectAttempts - 1);
-                console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-                setTimeout(connectWebSocket, delay);
-            } else {
-                addLog('Max reconnection attempts reached', 'error');
-                updateConnectionStatus(false);
-            }
-        }
-
-        function handleWebSocketMessage(msg) {
-            if (msg.type === 'state') {
-                updateAppState(msg.data);
-                render();
-            } else if (msg.type === 'log') {
-                addLog(msg.message, msg.level || 'info');
-            }
-        }
-
-        function sendCommand(command, params = {}) {
-            if (appState.connected && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'command', command, params }));
-            } else {
-                addLog('Not connected - command ignored', 'warning');
-            }
-        }
-
-        // ============================================================================
-        // STATE MANAGEMENT
-        // ============================================================================
-        function updateAppState(newData) {
-            const oldHp = appState.character.hp;
-            const oldMode = appState.combat.mode;
-
-            appState = { ...appState, ...newData };
-            appState.lastUpdate = Date.now();
-
-            // Detect changes for animations
-            if (appState.character.hp < oldHp) {
-                triggerHPFlash();
-            }
-            if (appState.combat.mode !== oldMode) {
-                triggerModeChange();
-            }
-
-            // Update session timer
-            if (!appState.sessionStart && newData.session?.duration_min) {
-                appState.sessionStart = Date.now() - (newData.session.duration_min * 60000);
-            }
-        }
-
-        // ============================================================================
-        // RENDERING
-        // ============================================================================
-        function render() {
-            renderCharacter();
-            renderMetrics();
-            renderCombat();
-            renderConsciousness();
-            renderReasoning();
-            renderExplorer();
-            updateSessionTimer();
-            renderMinimap();
-        }
-
-        function renderCharacter() {
-            const char = appState.character;
-            const maxHp = 100; // Placeholder
-            const maxMana = 100; // Placeholder
-
-            const hpPercent = Math.max(0, Math.min(100, (char.hp / maxHp) * 100));
-            const manaPercent = Math.max(0, Math.min(100, (char.mana / maxMana) * 100));
-
-            const hpBar = document.getElementById('hpBar').querySelector('.bar-fill');
-            hpBar.style.width = hpPercent + '%';
-            hpBar.classList.toggle('bar-hp', hpPercent < 50);
-            hpBar.classList.toggle('healthy', hpPercent >= 50);
-            document.getElementById('hpLabel').textContent = `${char.hp}/${maxHp}`;
-
-            const manaBar = document.getElementById('manaBar').querySelector('.bar-fill');
-            manaBar.style.width = manaPercent + '%';
-            document.getElementById('manaLabel').textContent = `${char.mana}/${maxMana}`;
-
-            document.getElementById('posX').textContent = `X: ${char.position.x}`;
-            document.getElementById('posY').textContent = `Y: ${char.position.y}`;
-            document.getElementById('posZ').textContent = `Z: ${char.position.z}`;
-
-            document.getElementById('charLevel').textContent = char.level || '—';
-            document.getElementById('charClass').textContent = char.class || '—';
-        }
-
-        function renderMetrics() {
-            const sess = appState.session;
-            document.getElementById('xpHr').textContent = formatNumber(sess.xp_hr);
-            document.getElementById('goldHr').textContent = formatNumber(sess.gold_hr);
-            document.getElementById('kills').textContent = sess.kills || 0;
-            document.getElementById('deaths').textContent = sess.deaths || 0;
-            document.getElementById('closeCalls').textContent = sess.close_calls || 0;
-            document.getElementById('duration').textContent = formatDuration(sess.duration_min);
-        }
-
-        function renderCombat() {
-            const combat = appState.combat;
-            const mode = combat.mode || 'IDLE';
-            document.getElementById('combatMode').textContent = mode;
-
-            const target = combat.target || 'None';
-            document.getElementById('targetName').textContent = target;
-
-            const threatLevel = combat.threat || 'NONE';
-            const threatEl = document.getElementById('threatLevel');
-            threatEl.textContent = threatLevel;
-            threatEl.className = 'threat-' + threatLevel.toLowerCase();
-
-            const battleList = document.getElementById('battleList');
-            battleList.innerHTML = '';
-            if (combat.battle_list && combat.battle_list.length > 0) {
-                combat.battle_list.slice(0, 10).forEach(creature => {
-                    const item = document.createElement('div');
-                    item.className = 'battle-item';
-                    const hpPercent = (creature.hp / (creature.max_hp || 100)) * 100;
-                    item.innerHTML = `
-                        <div class="battle-name">${creature.name}</div>
-                        <div class="bar-container" style="margin-top: 2px;">
-                            <div class="bar-fill bar-hp" style="width: ${hpPercent}%;"></div>
-                        </div>
-                        <div class="threat-level" style="margin-top: 4px; color: var(--text-secondary);">
-                            ${creature.hp}/${creature.max_hp || 100} HP
-                        </div>
-                    `;
-                    battleList.appendChild(item);
-                });
-            } else {
-                battleList.innerHTML = '<div style="color: var(--text-secondary); font-size: 9px;">No active battles</div>';
-            }
-        }
-
-        function renderConsciousness() {
-            const cons = appState.consciousness;
-
-            // Emotion
-            const emoji = emotionMap[cons.emotion] || '😐';
-            document.getElementById('emotionDisplay').innerHTML = `
-                <span class="emotion-emoji">${emoji}</span>
-                <span class="emotion-text">${cons.emotion || 'neutral'}</span>
-            `;
-
-            // Mastery bars
-            const masteryEl = document.getElementById('masteryBars');
-            masteryEl.innerHTML = '';
-            if (cons.mastery && Object.keys(cons.mastery).length > 0) {
-                Object.entries(cons.mastery).forEach(([key, value]) => {
-                    const percent = Math.min(100, Math.max(0, value * 100));
-                    masteryEl.innerHTML += `
-                        <div class="mastery-bar">
-                            <div class="mastery-label">
-                                <span>${key}</span>
-                                <span class="mastery-value">${percent.toFixed(0)}%</span>
-                            </div>
-                            <div class="bar-container" style="height: 8px;">
-                                <div class="bar-fill" style="width: ${percent}%; background: linear-gradient(90deg, #0066ff 0%, #00ffcc 100%);"></div>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-
-            // Goals
-            const goalsEl = document.getElementById('goalsList');
-            goalsEl.innerHTML = '';
-            if (cons.goals && cons.goals.length > 0) {
-                cons.goals.slice(0, 5).forEach((goal, idx) => {
-                    const priorityColor = goal.priority === 1 ? 'var(--danger)' : 'var(--primary)';
-                    goalsEl.innerHTML += `
-                        <div class="goal-item">
-                            <span>${goal.text}</span>
-                            <span class="goal-priority" style="color: ${priorityColor};">P${goal.priority || 2}</span>
-                        </div>
-                    `;
-                });
-            } else {
-                goalsEl.innerHTML = '<div style="color: var(--text-secondary);">No active goals</div>';
-            }
-        }
-
-        function renderReasoning() {
-            const reason = appState.reasoning;
-
-            // Danger trend
-            const trendArrows = {
-                'increasing': '↗️',
-                'decreasing': '↘️',
-                'stable': '→'
-            };
-            document.getElementById('dangerArrow').textContent = trendArrows[reason.danger_trend] || '→';
-            document.getElementById('dangerTrend').textContent = reason.danger_trend || 'unknown';
-
-            document.getElementById('creatureDiff').textContent = reason.creature_difficulty || 'unknown';
-            document.getElementById('topology').textContent = reason.topology || 'unknown';
-            document.getElementById('efficiency').textContent = (reason.efficiency ? (reason.efficiency * 100).toFixed(0) + '%' : '—');
-            document.getElementById('recommendation').textContent = reason.recommendation || 'continue monitoring';
-
-            // Warnings
-            const warningsEl = document.getElementById('warningsList');
-            warningsEl.innerHTML = '';
-            if (reason.warnings && reason.warnings.length > 0) {
-                reason.warnings.forEach(warning => {
-                    warningsEl.innerHTML += `<div class="warning-text">⚠️ ${warning}</div>`;
-                });
-            }
-
-            // Opportunities
-            const oppEl = document.getElementById('opportunitiesList');
-            oppEl.innerHTML = '';
-            if (reason.opportunities && reason.opportunities.length > 0) {
-                reason.opportunities.forEach(opp => {
-                    oppEl.innerHTML += `<div class="opportunity-text">✓ ${opp}</div>`;
-                });
-            }
-        }
-
-        function renderExplorer() {
-            const exp = appState.explorer;
-            const mem = appState.spatial_memory;
-
-            const badge = exp.active ? '<span class="active-badge">Active</span>' : '<span class="inactive-badge">Idle</span>';
-            document.querySelector('.explorer-status').innerHTML = `
-                ${badge}
-                <span style="font-size: 9px; color: var(--text-secondary);">${exp.strategy || '—'}</span>
-            `;
-
-            document.getElementById('explorerTotal').textContent = mem.total_explored || '0';
-            document.getElementById('explorerFloors').textContent = mem.floors || '0';
-            document.getElementById('explorerLandmarks').textContent = mem.landmarks || '0';
-            document.getElementById('explorerZones').textContent = mem.zones || '0';
-        }
-
-        function renderMinimap() {
-            const canvas = document.getElementById('minimapCanvas');
-            const ctx = canvas.getContext('2d');
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-
-            // Clear
-            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-darker').trim();
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw grid
-            ctx.strokeStyle = 'rgba(0, 255, 204, 0.1)';
-            ctx.lineWidth = 0.5;
-            for (let i = -MINIMAP_RADIUS; i <= MINIMAP_RADIUS; i += 5) {
-                ctx.beginPath();
-                ctx.moveTo(centerX + i * MINIMAP_TILE_SIZE, centerY - MINIMAP_RADIUS * MINIMAP_TILE_SIZE);
-                ctx.lineTo(centerX + i * MINIMAP_TILE_SIZE, centerY + MINIMAP_RADIUS * MINIMAP_TILE_SIZE);
-                ctx.stroke();
-
-                ctx.beginPath();
-                ctx.moveTo(centerX - MINIMAP_RADIUS * MINIMAP_TILE_SIZE, centerY + i * MINIMAP_TILE_SIZE);
-                ctx.lineTo(centerX + MINIMAP_RADIUS * MINIMAP_TILE_SIZE, centerY + i * MINIMAP_TILE_SIZE);
-                ctx.stroke();
-            }
-
-            // Draw player
-            ctx.fillStyle = 'rgba(0, 255, 204, 0.8)';
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = 'rgba(0, 255, 204, 1)';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-
-            // Direction indicator
-            ctx.strokeStyle = 'rgba(0, 255, 204, 0.6)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(centerX, centerY);
-            ctx.lineTo(centerX, centerY - 15);
-            ctx.stroke();
-
-            // Draw some dummy explored regions (in real implementation, load from spatial_memory)
-            ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
-            for (let i = -20; i < 20; i += 3) {
-                for (let j = -20; j < 20; j += 3) {
-                    if (Math.random() > 0.3) {
-                        ctx.fillRect(
-                            centerX + i * MINIMAP_TILE_SIZE,
-                            centerY + j * MINIMAP_TILE_SIZE,
-                            MINIMAP_TILE_SIZE - 1,
-                            MINIMAP_TILE_SIZE - 1
-                        );
-                    }
-                }
-            }
-        }
-
-        function updateSessionTimer() {
-            if (!appState.sessionStart) return;
-            const elapsed = Date.now() - appState.sessionStart;
-            const minutes = Math.floor(elapsed / 60000);
-            const seconds = Math.floor((elapsed % 60000) / 1000);
-            document.getElementById('sessionTimer').textContent =
-                `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        }
-
-        function updateConnectionStatus(connected) {
-            const indicator = document.getElementById('connectionStatus');
-            const text = document.getElementById('connectionText');
-            if (connected) {
-                indicator.classList.remove('disconnected');
-                text.textContent = 'CONNECTED';
-            } else {
-                indicator.classList.add('disconnected');
-                text.textContent = 'OFFLINE';
-            }
-        }
-
-        // ============================================================================
-        // UI INTERACTIONS
-        // ============================================================================
-        function setupEventListeners() {
-            document.getElementById('btnFrontier').addEventListener('click', () => {
-                sendCommand('explore', { strategy: 'FRONTIER' });
-                addLog('Exploration: FRONTIER mode activated', 'info');
-            });
-            document.getElementById('btnDeep').addEventListener('click', () => {
-                sendCommand('explore', { strategy: 'DEEP' });
-                addLog('Exploration: DEEP mode activated', 'info');
-            });
-            document.getElementById('btnSafe').addEventListener('click', () => {
-                sendCommand('explore', { strategy: 'SAFE' });
-                addLog('Exploration: SAFE mode activated', 'info');
-            });
-            document.getElementById('btnValue').addEventListener('click', () => {
-                sendCommand('explore', { strategy: 'VALUE' });
-                addLog('Exploration: VALUE mode activated', 'info');
-            });
-            document.getElementById('btnStop').addEventListener('click', () => {
-                sendCommand('stop_explore', {});
-                addLog('Exploration stopped', 'warning');
-            });
-            document.getElementById('btnSaveMap').addEventListener('click', () => {
-                sendCommand('save_map', {});
-                addLog('Map saved to storage', 'success');
-            });
-            document.getElementById('modeSelect').addEventListener('change', (e) => {
-                if (e.target.value) {
-                    sendCommand('set_mode', { mode: e.target.value });
-                    addLog(`Mode changed to ${e.target.value}`, 'info');
-                }
-            });
-        }
-
-        function triggerHPFlash() {
-            const bar = document.getElementById('hpBar');
-            bar.classList.remove('flash');
-            void bar.offsetWidth; // Trigger reflow
-            bar.classList.add('flash');
-            setTimeout(() => bar.classList.remove('flash'), 400);
-        }
-
-        function triggerModeChange() {
-            const badge = document.getElementById('combatMode');
-            badge.style.animation = 'none';
-            void badge.offsetWidth;
-            badge.style.animation = 'mode-pulse 0.5s ease';
-        }
-
-        function addLog(message, level = 'info') {
-            const logStream = document.getElementById('logStream');
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${level}`;
-            const timestamp = new Date().toLocaleTimeString();
-            entry.textContent = `[${timestamp}] ${message}`;
-            logStream.insertAdjacentElement('afterbegin', entry);
-
-            // Keep only max entries
-            while (logStream.children.length > MAX_LOG_ENTRIES) {
-                logStream.removeChild(logStream.lastChild);
-            }
-        }
-
-        // ============================================================================
-        // UTILITIES
-        // ============================================================================
-        function formatNumber(num) {
-            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-            return num.toString();
-        }
-
-        function formatDuration(minutes) {
-            const h = Math.floor(minutes / 60);
-            const m = Math.floor(minutes % 60);
-            if (h > 0) return `${h}h ${m}m`;
-            return `${m}m`;
-        }
-
-        // ============================================================================
-        // INITIALIZATION
-        // ============================================================================
-        function init() {
-            console.log('Initializing NEXUS Dashboard');
-            setupEventListeners();
-            connectWebSocket();
-
-            // Initial render
-            render();
-
-            // Animation loop
-            setInterval(() => {
-                updateSessionTimer();
-                renderMinimap();
-            }, 1000);
-
-            addLog('Dashboard initialized', 'success');
-        }
-
-        // Start on load
-        window.addEventListener('DOMContentLoaded', init);
+        const state = { connected: false, demoMode: false, ws: null, uptimeStart: Date.now(), currentPage: 'games', mapMode: 'danger', currentGame: 'tibia', agentMode: 'HUNTING', sessionStart: null, stats: { hp: 100, maxHp: 100, mana: 100, maxMana: 100, xpHr: 0, goldHr: 0, kills: 0, deaths: 0, closeCalls: 0, sessionDuration: 0, threatLevel: 'low', combatMode: 'HUNTING', currentTarget: null, battleList: [], reactiveLatency: 0, strategicLatency: 0, breakerState: 'CLOSED', apiCalls: 0, skippedCalls: 0, emotions: { confidence: 75, determination: 80, focus: 85, aggression: 60, caution: 70 }, events: [] }, games: [{ id: 'tibia', name: 'Tibia', icon: '⚔️', genre: 'MMORPG', description: 'Classic open-world fantasy MMORPG with deep progression systems.', capabilities: ['Multi-level AI', 'Resource Management', 'Social Systems'], status: 'ready', stats: { sessions: 24, hours: 487, bestXpHr: 1200000 } }, { id: 'lost-ark', name: 'Lost Ark', icon: '🌙', genre: 'Action MMORPG', description: 'Fast-paced action RPG with dynamic combat and dungeons.', capabilities: ['Action Prediction', 'Party Coordination'], status: 'planned' }, { id: 'wow', name: 'World of Warcraft', icon: '👑', genre: 'MMORPG', description: 'Massive multiplayer world with raids, dungeons, and PvP.', capabilities: ['Raid Automation', 'Market Analysis'], status: 'planned' }, { id: 'poe', name: 'Path of Exile', icon: '⚡', genre: 'ARPG', description: 'Complex action RPG with intricate character building.', capabilities: ['Build Optimization', 'Currency Trading'], status: 'planned' }], skills: [{ id: 1, name: 'Standard Hunting', category: 'Combat', score: 92, version: '2.1.0', active: true }, { id: 2, name: 'Spell Rotation', category: 'Combat', score: 87, version: '1.9.2', active: false }, { id: 3, name: 'Resource Farming', category: 'Economy', score: 84, version: '2.0.1', active: false }, { id: 4, name: 'Dungeon Navigation', category: 'Exploration', score: 76, version: '1.8.5', active: false }, { id: 5, name: 'PvP Evasion', category: 'Safety', score: 68, version: '1.7.0', active: false }], mapCells: new Map(), mapWidth: 50, mapHeight: 50, playerX: 25, playerY: 25, modes: ['HUNTING', 'FLEEING', 'DEPOSITING', 'TRADING', 'NAVIGATING', 'EXPLORING', 'IDLE'] };
+        function formatNumber(num) { if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'; if (num >= 1000) return (num / 1000).toFixed(1) + 'K'; return num.toFixed(0); }
+        function formatUptime(ms) { const seconds = Math.floor(ms / 1000) % 60; const minutes = Math.floor(ms / 60000) % 60; const hours = Math.floor(ms / 3600000); return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`; }
+        function getEventIcon(type) { const icons = { 'kill': '⚔️', 'death': '💀', 'heal': '💚', 'loot': '💰', 'strategic': '🧠', 'close-call': '⚠️' }; return icons[type] || '📌'; }
+        function renderGames() { const container = document.getElementById('gamesContainer'); container.innerHTML = state.games.map(game => `<div class="game-card ${game.status === 'ready' ? 'ready' : 'disabled'}"><div class="game-header"><div class="game-icon">${game.icon}</div><div class="game-info"><div class="game-name">${game.name}</div><div class="game-genre">${game.genre}</div></div></div><div class="game-description">${game.description}</div><div class="game-tags">${game.capabilities.map(cap => `<span class="tag">${cap}</span>`).join('')}</div>${game.stats ? `<div class="game-stats"><div class="stat-row"><span class="stat-label">Sessions</span><span class="stat-value">${game.stats.sessions}</span></div><div class="stat-row"><span class="stat-label">Hours</span><span class="stat-value">${game.stats.hours}</span></div><div class="stat-row"><span class="stat-label">Best XP/hr</span><span class="stat-value">${formatNumber(game.stats.bestXpHr)}</span></div></div>` : ''}<button class="game-action" ${game.status !== 'ready' ? 'disabled' : ''}>${game.status === 'ready' ? 'LAUNCH' : 'COMING SOON'}</button></div>`).join(''); }
+        function renderVitals() { const hpPercent = (state.stats.hp / state.stats.maxHp) * 100; const manaPercent = (state.stats.mana / state.stats.maxMana) * 100; const hpFill = document.getElementById('hpFill'); const manaFill = document.getElementById('manaFill'); hpFill.style.width = hpPercent + '%'; hpFill.textContent = Math.round(hpPercent) + '%'; if (hpPercent < 30) { hpFill.classList.add('critical'); hpFill.classList.remove('warning'); } else if (hpPercent < 60) { hpFill.classList.remove('critical'); hpFill.classList.add('warning'); } else { hpFill.classList.remove('critical', 'warning'); } manaFill.style.width = manaPercent + '%'; manaFill.textContent = Math.round(manaPercent) + '%'; document.getElementById('hpValue').textContent = `${state.stats.hp}/${state.stats.maxHp}`; document.getElementById('manaValue').textContent = `${state.stats.mana}/${state.stats.maxMana}`; }
+        function renderMetrics() { document.getElementById('xpHr').textContent = formatNumber(state.stats.xpHr); document.getElementById('goldHr').textContent = formatNumber(state.stats.goldHr); document.getElementById('kills').textContent = state.stats.kills; document.getElementById('deaths').textContent = state.stats.deaths; document.getElementById('closeCalls').textContent = state.stats.closeCalls; document.getElementById('duration').textContent = formatUptime(state.stats.sessionDuration); }
+        function renderCombat() { document.getElementById('combatMode').textContent = state.stats.combatMode; document.getElementById('threatLevel').textContent = state.stats.threatLevel.toUpperCase(); document.getElementById('threatLevel').className = `threat-level ${state.stats.threatLevel}`; const targetText = state.stats.currentTarget ? `Target: ${state.stats.currentTarget.name} (${state.stats.currentTarget.hp}/${state.stats.currentTarget.maxHp} HP)` : 'No current target'; document.getElementById('targetInfo').textContent = targetText; const battleList = document.getElementById('battleList'); battleList.innerHTML = state.stats.battleList.map(creature => { const hpPercent = (creature.hp / creature.maxHp) * 100; return `<div class="battle-entry"><div class="battle-name">${creature.name}</div><div class="battle-hp-bar"><div class="battle-hp-fill" style="width: ${hpPercent}%;"></div></div></div>`; }).join(''); }
+        function renderBrain() { document.getElementById('reactiveLatency').textContent = state.stats.reactiveLatency + 'ms'; document.getElementById('strategicLatency').textContent = state.stats.strategicLatency + 'ms'; const breakerEl = document.getElementById('breakerStatus'); breakerEl.textContent = state.stats.breakerState; breakerEl.className = `breaker-status ${state.stats.breakerState.toLowerCase()}`; document.getElementById('apiCalls').textContent = state.stats.apiCalls; document.getElementById('skippedCalls').textContent = state.stats.skippedCalls; }
+        function renderConsciousness() { document.getElementById('confFill').style.width = state.stats.emotions.confidence + '%'; document.getElementById('detFill').style.width = state.stats.emotions.determination + '%'; document.getElementById('focFill').style.width = state.stats.emotions.focus + '%'; document.getElementById('agrFill').style.width = state.stats.emotions.aggression + '%'; document.getElementById('cauFill').style.width = state.stats.emotions.caution + '%'; }
+        function addEvent(type, message) { const now = new Date(); const timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); state.stats.events.unshift({ type, message, time: timeStr }); if (state.stats.events.length > 50) state.stats.events.pop(); const stream = document.getElementById('eventStream'); const eventEl = document.createElement('div'); eventEl.className = `event-item ${type}`; eventEl.innerHTML = `<span class="event-icon">${getEventIcon(type)}</span><div class="event-content"><div class="event-text">${message}</div><div class="event-time">${timeStr}</div></div>`; stream.insertBefore(eventEl, stream.firstChild); if (stream.children.length > 50) stream.removeChild(stream.lastChild); }
+        function renderSkills() { const container = document.getElementById('skillsList'); container.innerHTML = state.skills.map(skill => `<div class="skill-item ${skill.active ? 'active' : ''}" data-skill-id="${skill.id}"><div class="skill-icon">⚡</div><div class="skill-info"><div class="skill-header"><div class="skill-name">${skill.name}</div><div class="skill-version">v${skill.version}</div></div><div class="skill-category">${skill.category}</div><div class="skill-score-container"><div class="skill-score-bar"><div class="skill-score-fill" style="width: ${skill.score}%;"></div></div><div class="skill-score-value">${skill.score}%</div></div></div></div>`).join(''); document.querySelectorAll('.skill-item').forEach(item => { item.addEventListener('click', () => { state.skills.forEach(s => s.active = false); const skillId = parseInt(item.dataset.skillId); state.skills.find(s => s.id === skillId).active = true; renderSkills(); }); }); }
+        function renderSettings() { const modeGrid = document.getElementById('modeGrid'); modeGrid.innerHTML = state.modes.map(mode => `<button class="mode-button ${mode === state.agentMode ? 'active' : ''}" data-mode="${mode}">${mode}</button>`).join(''); document.querySelectorAll('[data-mode]').forEach(btn => { btn.addEventListener('click', () => { state.agentMode = btn.dataset.mode; document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }); }); const configDisplay = document.getElementById('configDisplay'); configDisplay.innerHTML = `<div class="settings-row"><span class="settings-label">Active Mode</span><span class="settings-value">${state.agentMode}</span></div><div class="settings-row"><span class="settings-label">Uptime</span><span class="settings-value">${formatUptime(Date.now() - state.uptimeStart)}</span></div><div class="settings-row"><span class="settings-label">Connection</span><span class="settings-value">${state.connected ? 'LIVE' : 'DEMO'}</span></div>`; }
+        function renderMap() { const canvas = document.getElementById('mapCanvas'); const wrapper = canvas.parentElement; const size = Math.min(wrapper.clientWidth - 40, wrapper.clientHeight - 40); canvas.width = size; canvas.height = size; const cellSize = size / Math.max(state.mapWidth, state.mapHeight); const ctx = canvas.getContext('2d'); ctx.fillStyle = '#1a1a22'; ctx.fillRect(0, 0, size, size); for (let x = 0; x < state.mapWidth; x++) { for (let y = 0; y < state.mapHeight; y++) { const cellKey = `${x},${y}`; const cell = state.mapCells.get(cellKey) || { danger: 0.5, value: 0.5, explored: false }; let color = '#0a0a0f'; if (cell.explored) { if (state.mapMode === 'danger') { const hue = (1 - cell.danger) * 120; color = `hsl(${hue}, 80%, 40%)`; } else if (state.mapMode === 'value') { const brightness = 20 + cell.value * 60; color = `hsl(40, 100%, ${brightness}%)`; } else { color = '#111118'; } } ctx.fillStyle = color; ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize); ctx.strokeStyle = '#222228'; ctx.lineWidth = 0.5; ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize); } } const px = (state.playerX + 0.5) * cellSize; const py = (state.playerY + 0.5) * cellSize; ctx.fillStyle = '#00f0ff'; ctx.beginPath(); ctx.arc(px, py, cellSize * 0.3, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 2; ctx.stroke(); ctx.shadowColor = 'rgba(0, 240, 255, 0.8)'; ctx.shadowBlur = 10; ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(px, py, cellSize * 0.5, 0, Math.PI * 2); ctx.stroke(); ctx.shadowColor = 'transparent'; }
+        function showPage(pageId) { document.querySelectorAll('.page').forEach(p => p.classList.remove('active')); document.getElementById('page-' + pageId).classList.add('active'); document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active')); document.querySelector(`[data-page="${pageId}"]`).classList.add('active'); state.currentPage = pageId; if (pageId === 'map') { setTimeout(renderMap, 100); } }
+        document.getElementById('sidebarToggle').addEventListener('click', () => { document.querySelector('.sidebar').classList.toggle('expanded'); });
+        document.querySelectorAll('[data-page]').forEach(btn => { btn.addEventListener('click', () => { showPage(btn.dataset.page); }); });
+        document.querySelectorAll('.map-toggle').forEach(btn => { btn.addEventListener('click', () => { document.querySelectorAll('.map-toggle').forEach(b => b.classList.remove('active')); btn.classList.add('active'); state.mapMode = btn.dataset.mode; renderMap(); }); });
+        function connectWebSocket() { const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'; const wsUrl = `${protocol}//${window.location.host}/ws`; state.ws = new WebSocket(wsUrl); state.ws.onopen = () => { state.connected = true; state.demoMode = false; updateConnectionStatus(); console.log('WebSocket connected'); }; state.ws.onmessage = (event) => { try { const data = JSON.parse(event.data); updateState(data); } catch (e) { console.error('Failed to parse message:', e); } }; state.ws.onerror = (error) => { console.error('WebSocket error:', error); }; state.ws.onclose = () => { state.connected = false; updateConnectionStatus(); console.log('WebSocket disconnected'); setTimeout(connectWebSocket, 3000); }; }
+        function updateState(data) { if (data.state) { Object.assign(state.stats, data.state); renderMetrics(); renderVitals(); renderCombat(); renderBrain(); renderConsciousness(); } if (data.event) { addEvent(data.event.type, data.event.message); } }
+        function updateConnectionStatus() { const dot = document.getElementById('statusDot'); const status = document.getElementById('connectionStatus'); const badge = document.getElementById('modeBadge'); if (state.connected) { dot.classList.add('connected'); status.textContent = 'Connected'; badge.textContent = 'CONNECTED'; } else { dot.classList.remove('connected'); status.textContent = 'Disconnected'; badge.textContent = state.demoMode ? 'DEMO' : 'OFFLINE'; } }
+        function initDemoMode() { state.demoMode = true; updateConnectionStatus(); for (let x = 0; x < state.mapWidth; x++) { for (let y = 0; y < state.mapHeight; y++) { const dist = Math.sqrt((x - 25) ** 2 + (y - 25) ** 2); state.mapCells.set(`${x},${y}`, { danger: Math.max(0, Math.min(1, dist / 15)), value: Math.sin(x * 0.3 + y * 0.2) * 0.3 + 0.5, explored: Math.random() > 0.3 }); } } const eventTypes = ['kill', 'death', 'heal', 'loot', 'strategic', 'close-call']; const creatures = ['Rotworm', 'Demon', 'Dragon', 'Elf', 'Archer', 'Orc']; setInterval(() => { state.stats.hp = Math.max(20, Math.min(100, state.stats.hp + (Math.random() - 0.5) * 15)); state.stats.mana = Math.max(30, Math.min(100, state.stats.mana + (Math.random() - 0.5) * 10)); state.stats.xpHr = 800000 + Math.random() * 400000; state.stats.goldHr = 50000 + Math.random() * 200000; if (Math.random() > 0.7) { const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)]; const creature = creatures[Math.floor(Math.random() * creatures.length)]; switch (eventType) { case 'kill': state.stats.kills++; addEvent('kill', `Killed ${creature} - +${Math.floor(Math.random() * 10000)} XP`); break; case 'death': state.stats.deaths++; addEvent('death', `Died to ${creature}`); break; case 'heal': addEvent('heal', `Healed by Holy Light +${Math.floor(Math.random() * 50)} HP`); break; case 'loot': addEvent('loot', `Looted ${Math.floor(Math.random() * 5000)} gold`); break; case 'strategic': addEvent('strategic', 'Strategic decision: Route adjusted'); break; case 'close-call': state.stats.closeCalls++; addEvent('close-call', `Narrowly avoided ${creature}`); break; } } Object.keys(state.stats.emotions).forEach(emotion => { state.stats.emotions[emotion] = Math.max(20, Math.min(95, state.stats.emotions[emotion] + (Math.random() - 0.5) * 5)); }); if (Math.random() > 0.6) { const newBattle = { name: creatures[Math.floor(Math.random() * creatures.length)], hp: Math.floor(Math.random() * 80 + 20), maxHp: 100 }; state.stats.battleList.unshift(newBattle); if (state.stats.battleList.length > 4) state.stats.battleList.pop(); } if (state.stats.battleList.length > 0) { state.stats.battleList.forEach(b => { b.hp = Math.max(0, b.hp - Math.random() * 30); }); state.stats.battleList = state.stats.battleList.filter(b => b.hp > 0); } renderVitals(); renderMetrics(); renderCombat(); renderConsciousness(); }, 1500); setInterval(() => { state.stats.reactiveLatency = Math.floor(Math.random() * 50 + 10); state.stats.strategicLatency = Math.floor(Math.random() * 150 + 50); state.stats.apiCalls = Math.floor(Math.random() * 100 + 50); renderBrain(); }, 2000); setInterval(() => { state.stats.sessionDuration += 1000; renderMetrics(); }, 1000); }
+        document.addEventListener('DOMContentLoaded', () => { renderGames(); renderSkills(); renderSettings(); renderVitals(); renderMetrics(); renderCombat(); renderBrain(); renderConsciousness(); connectWebSocket(); setTimeout(() => { if (!state.connected) { initDemoMode(); } }, 3000); setInterval(() => { document.getElementById('uptime').textContent = 'UP ' + formatUptime(Date.now() - state.uptimeStart); }, 1000); if (!state.demoMode) { setInterval(() => { if (state.stats.sessionDuration === 0) { state.stats.sessionDuration = 1000; } else { state.stats.sessionDuration += 1000; } renderMetrics(); }, 1000); } }); renderGames();
     </script>
 </body>
 </html>

@@ -1,22 +1,21 @@
 """
 NEXUS — Dashboard Server
 
-Real-time web dashboard powered by aiohttp + WebSocket.
-Serves a single-page app that displays:
-    - Agent state (HP, mana, position, mode)
-    - Session metrics (XP/hr, gold/hr, deaths, kills)
-    - Spatial memory minimap visualization
-    - Consciousness state (emotion, goals, mastery)
-    - Reasoning engine inferences
-    - Exploration progress
-    - Structured log stream
-    - Agent controls (start/stop, skills, exploration)
+Full-stack web dashboard: aiohttp REST API + WebSocket + SPA frontend.
 
 Architecture:
-    - aiohttp serves the static HTML + handles WebSocket
-    - Agent pushes state updates every 500ms via WebSocket
-    - Dashboard sends control commands back via WebSocket
-    - Zero external dependencies beyond aiohttp
+    - GET  /           → Serves app.html (full SPA)
+    - GET  /api/games  → List registered games from GameRegistry
+    - GET  /api/state  → Full agent state snapshot
+    - GET  /api/status → Agent running status + circuit breaker + brain metrics
+    - GET  /api/skills → Loaded skills list
+    - GET  /api/map    → Spatial memory cells for canvas visualization
+    - POST /api/command → Execute agent commands (change_mode, change_skill, etc.)
+    - WS   /ws         → Real-time state push (500ms) + bidirectional commands
+
+The SPA works in two modes:
+    - CONNECTED: Agent running → real data via WebSocket
+    - DEMO: No agent → simulated data for UI preview
 """
 
 from __future__ import annotations
@@ -40,10 +39,10 @@ DASHBOARD_HTML = Path(__file__).parent / "app.html"
 
 class DashboardServer:
     """
-    Lightweight dashboard server for NEXUS.
+    Real-time dashboard server for NEXUS.
 
-    Runs alongside the agent, pushing real-time state
-    updates to connected browsers via WebSocket.
+    Serves the SPA frontend and provides REST + WebSocket APIs
+    for monitoring and controlling the agent.
     """
 
     def __init__(self, agent: "NexusAgent", host: str = "127.0.0.1", port: int = 8420):
@@ -54,16 +53,26 @@ class DashboardServer:
         self._runner: Optional[web.AppRunner] = None
         self._ws_clients: list[web.WebSocketResponse] = []
         self._broadcast_task: Optional[asyncio.Task] = None
+        self._start_time: float = 0.0
 
     async def start(self):
         """Start the dashboard web server."""
+        self._start_time = time.time()
         self._app = web.Application()
+
+        # SPA
         self._app.router.add_get("/", self._serve_dashboard)
-        self._app.router.add_get("/ws", self._handle_websocket)
+
+        # REST API
+        self._app.router.add_get("/api/games", self._api_games)
         self._app.router.add_get("/api/state", self._api_state)
+        self._app.router.add_get("/api/status", self._api_status)
         self._app.router.add_get("/api/skills", self._api_skills)
         self._app.router.add_get("/api/map", self._api_map)
         self._app.router.add_post("/api/command", self._api_command)
+
+        # WebSocket
+        self._app.router.add_get("/ws", self._handle_websocket)
 
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
@@ -71,7 +80,6 @@ class DashboardServer:
         site = web.TCPSite(self._runner, self.host, self.port)
         await site.start()
 
-        # Start broadcast loop
         self._broadcast_task = asyncio.create_task(self._broadcast_loop())
 
         log.info("dashboard.started", url=f"http://{self.host}:{self.port}")
@@ -85,7 +93,6 @@ class DashboardServer:
             except asyncio.CancelledError:
                 pass
 
-        # Close all WebSocket connections
         for ws in self._ws_clients:
             await ws.close()
         self._ws_clients.clear()
@@ -100,13 +107,73 @@ class DashboardServer:
     # ═══════════════════════════════════════════════════════
 
     async def _serve_dashboard(self, request: web.Request) -> web.Response:
-        """Serve the single-page dashboard app."""
+        """Serve the SPA dashboard."""
         if DASHBOARD_HTML.exists():
             return web.Response(
                 text=DASHBOARD_HTML.read_text(),
                 content_type="text/html",
             )
-        return web.Response(text="Dashboard not found", status=404)
+        return web.Response(
+            text="<h1>NEXUS Dashboard — app.html not found</h1>",
+            status=404,
+            content_type="text/html",
+        )
+
+    async def _api_games(self, request: web.Request) -> web.Response:
+        """List all registered games from the GameRegistry."""
+        try:
+            from games.registry import list_games
+            games = list_games()
+            return web.json_response({
+                "games": [
+                    {
+                        "id": g.id,
+                        "name": g.name,
+                        "version": g.version,
+                        "genre": g.genre,
+                        "perspective": g.perspective,
+                        "description": g.description,
+                        "capabilities": [c.name for c in g.capabilities],
+                        "min_resolution": g.min_resolution,
+                        "recommended_resolution": g.recommended_resolution,
+                    }
+                    for g in games
+                ]
+            })
+        except Exception as e:
+            return web.json_response({"games": [], "error": str(e)})
+
+    async def _api_status(self, request: web.Request) -> web.Response:
+        """Return agent operational status + brain metrics."""
+        agent = self.agent
+        uptime = time.time() - self._start_time
+
+        status = {
+            "running": True,
+            "uptime_seconds": round(uptime),
+            "mode": agent.state.mode.name,
+            "game": getattr(agent, "_game_id", "tibia"),
+            "version": "0.4.1",
+            "brains": {
+                "reactive": {
+                    "tick_rate_ms": agent.config.get("reactive", {}).get("tick_rate_ms", 25),
+                },
+                "strategic": {
+                    "calls": agent.strategic_brain.calls,
+                    "skipped": agent.strategic_brain.skipped_calls,
+                    "avg_latency_ms": round(agent.strategic_brain.avg_latency_ms),
+                    "error_rate": round(agent.strategic_brain.error_rate, 3),
+                    "circuit_breaker": agent.strategic_brain.circuit_breaker_state,
+                },
+            },
+            "event_bus": agent.event_bus.stats,
+            "recovery": {
+                "active": agent.recovery.recovery_active,
+                "total": agent.recovery.total_recoveries,
+            },
+            "ws_clients": len(self._ws_clients),
+        }
+        return web.json_response(status)
 
     async def _api_state(self, request: web.Request) -> web.Response:
         """Return current agent state as JSON."""
@@ -114,7 +181,7 @@ class DashboardServer:
         return web.json_response(state)
 
     async def _api_skills(self, request: web.Request) -> web.Response:
-        """Return all skills."""
+        """Return all loaded skills."""
         skills = []
         for name, skill in self.agent.skill_engine.skills.items():
             skills.append({
@@ -128,10 +195,10 @@ class DashboardServer:
         return web.json_response({"skills": skills})
 
     async def _api_map(self, request: web.Request) -> web.Response:
-        """Return spatial memory map data for visualization."""
+        """Return spatial memory map data for canvas visualization."""
         pos = self.agent.state.position
         if not pos:
-            return web.json_response({"cells": [], "landmarks": {}})
+            return web.json_response({"cells": [], "landmarks": {}, "player": None})
 
         z = pos.z
         memory = self.agent.spatial_memory
@@ -164,10 +231,8 @@ class DashboardServer:
             data = await request.json()
             cmd = data.get("command", "")
             params = data.get("params", {})
-
             result = await self._execute_command(cmd, params)
             return web.json_response({"ok": True, "result": result})
-
         except Exception as e:
             return web.json_response({"ok": False, "error": str(e)}, status=400)
 
@@ -183,7 +248,6 @@ class DashboardServer:
         self._ws_clients.append(ws)
         log.info("dashboard.ws_connected", clients=len(self._ws_clients))
 
-        # Send initial state
         await ws.send_json({"type": "state", "data": self._build_state_payload()})
 
         try:
@@ -202,7 +266,8 @@ class DashboardServer:
                 elif msg.type == web.WSMsgType.ERROR:
                     log.error("dashboard.ws_error", error=ws.exception())
         finally:
-            self._ws_clients.remove(ws)
+            if ws in self._ws_clients:
+                self._ws_clients.remove(ws)
             log.info("dashboard.ws_disconnected", clients=len(self._ws_clients))
 
         return ws
@@ -223,7 +288,8 @@ class DashboardServer:
                             dead.append(ws)
 
                     for ws in dead:
-                        self._ws_clients.remove(ws)
+                        if ws in self._ws_clients:
+                            self._ws_clients.remove(ws)
 
             except asyncio.CancelledError:
                 break
@@ -237,14 +303,13 @@ class DashboardServer:
     # ═══════════════════════════════════════════════════════
 
     def _build_state_payload(self) -> dict:
-        """Build the complete state payload for the dashboard."""
+        """Build the complete state payload for dashboard consumption."""
         agent = self.agent
         snapshot = agent.state.get_snapshot()
         char = snapshot.get("character", {})
         combat = snapshot.get("combat", {})
         session = snapshot.get("session", {})
 
-        # Consciousness
         consciousness = {}
         if agent.consciousness:
             consciousness = {
@@ -260,9 +325,8 @@ class DashboardServer:
                 ],
             }
 
-        # Reasoning
         reasoning = {}
-        if agent.reasoning_engine:
+        if agent.reasoning_engine and agent.reasoning_engine.current_profile:
             p = agent.reasoning_engine.current_profile
             reasoning = {
                 "danger_trend": p.danger_trend,
@@ -272,23 +336,11 @@ class DashboardServer:
                 "recommendation": p.recommended_action,
                 "warnings": p.warnings[:3],
                 "opportunities": p.opportunities[:2],
-                "recent_inferences": [
-                    {"category": i.category, "text": i.description[:80],
-                     "confidence": i.confidence, "hint": i.action_hint}
-                    for i in agent.reasoning_engine.get_recent_inferences(max_age_s=30)[-5:]
-                ],
             }
 
-        # Explorer
-        explorer = {
-            "active": agent.explorer.active,
-            "strategy": agent.explorer.strategy.name if agent.explorer.active else None,
-        }
-        if hasattr(agent.explorer, "stats"):
-            explorer.update(agent.explorer.stats)
-
-        # Spatial memory
-        spatial = agent.spatial_memory.stats
+        explorer = {"active": False}
+        if hasattr(agent, "explorer") and agent.explorer.active:
+            explorer = {"active": True, "strategy": agent.explorer.strategy.name}
 
         return {
             "timestamp": time.time(),
@@ -316,22 +368,18 @@ class DashboardServer:
             "consciousness": consciousness,
             "reasoning": reasoning,
             "explorer": explorer,
-            "spatial_memory": spatial,
-            "foundry": {
-                "evolutions": agent.foundry.total_evolutions,
-            },
-            "recovery": {
-                "active": agent.recovery.recovery_active,
-                "total": agent.recovery.total_recoveries,
-            },
+            "spatial_memory": agent.spatial_memory.stats if hasattr(agent, "spatial_memory") else {},
+            "foundry": {"evolutions": agent.foundry.total_evolutions if hasattr(agent, "foundry") else 0},
             "navigation": {
-                "waypoint": f"{agent.navigator.current_index}/{len(agent.navigator.active_route or [])}",
+                "waypoint": f"{agent.navigator.current_index}/{len(agent.navigator.active_route or [])}"
+                if hasattr(agent, "navigator") else "0/0",
             },
             "strategic_brain": {
                 "calls": agent.strategic_brain.calls,
                 "avg_latency_ms": round(agent.strategic_brain.avg_latency_ms),
                 "error_rate": round(agent.strategic_brain.error_rate, 3),
                 "skipped": agent.strategic_brain.skipped_calls,
+                "circuit_breaker": agent.strategic_brain.circuit_breaker_state,
             },
         }
 
@@ -383,15 +431,5 @@ class DashboardServer:
         elif cmd == "save_map":
             await agent.spatial_memory.save()
             return {"saved": True}
-
-        elif cmd == "get_inferences":
-            inferences = agent.reasoning_engine.get_recent_inferences(max_age_s=120)
-            return {
-                "inferences": [
-                    {"cat": i.category, "conf": i.confidence,
-                     "desc": i.description, "hint": i.action_hint}
-                    for i in inferences
-                ]
-            }
 
         return {"error": f"Unknown command: {cmd}"}
