@@ -313,9 +313,20 @@ class SetupWizard:
         (NEXUS_HOME / "data").mkdir(exist_ok=True)
         (NEXUS_HOME / "logs").mkdir(exist_ok=True)
 
-        # Write config
+        # Recursively convert tuples to lists (tuples serialize as
+        # !!python/tuple which yaml.safe_load rejects)
+        def _sanitize(obj):
+            if isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_sanitize(i) for i in obj]
+            return obj
+
+        full_config = _sanitize(full_config)
+
+        # Write config (safe_dump avoids Python-specific YAML tags)
         with open(CONFIG_PATH, "w") as f:
-            yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
+            yaml.safe_dump(full_config, f, default_flow_style=False, sort_keys=False)
 
         self.print(f"  [green]✓[/green] Config saved: [cyan]{CONFIG_PATH}[/cyan]\n")
 
