@@ -119,28 +119,41 @@ class ScreenCalibrator:
 
     def _find_hp_bar(self, frame: np.ndarray) -> Optional[dict]:
         """
-        Find HP bar by scanning for a horizontal red bar in the top-left quadrant.
+        Find HP bar by scanning for a horizontal colored bar in the top-left quadrant.
 
         Tibia HP bar characteristics:
         - Located in top 30% of screen
         - Located in left 50% of screen
-        - Horizontal red bar, typically 100-200px wide, 8-15px tall
-        - Red pixels: R > 150, G < 80, B < 80
+        - Horizontal bar, typically 100-200px wide, 8-15px tall
+        - Color changes with HP level:
+            * GREEN when HP is high (G > 120, G > R+40, G > B+40)
+            * YELLOW/ORANGE at medium HP
+            * RED when HP is low (R > 120, R > G+40, R > B+40)
+        - We detect ALL these colors to find the bar regardless of current HP
         """
         h, w = frame.shape[:2]
         # Scan top-left quadrant only
         search_region = frame[:int(h * 0.3), :int(w * 0.5)]
 
-        # Create red mask
         r = search_region[:, :, 2].astype(np.int16)
         g = search_region[:, :, 1].astype(np.int16)
         b = search_region[:, :, 0].astype(np.int16)
-        red_mask = ((r > 120) & (r > g + 40) & (r > b + 40)).astype(np.uint8) * 255
 
-        # Find contours of red regions
-        contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Detect ALL possible HP bar colors:
+        # Green (full HP): G dominant
+        green_mask = (g > 120) & (g > r + 30) & (g > b + 30)
+        # Red (low HP): R dominant
+        red_mask = (r > 120) & (r > g + 30) & (r > b + 30)
+        # Yellow/Orange (medium HP): R and G both high, B low
+        yellow_mask = (r > 100) & (g > 80) & (b < 80) & (r + g > 250)
 
-        # Find the most bar-shaped red contour (wide, thin)
+        # Combined: any HP bar colored pixel
+        hp_bar_mask = (green_mask | red_mask | yellow_mask).astype(np.uint8) * 255
+
+        # Find contours of colored regions
+        contours, _ = cv2.findContours(hp_bar_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Find the most bar-shaped contour (wide, thin)
         best = None
         best_score = 0
         for cnt in contours:
@@ -149,7 +162,7 @@ class ScreenCalibrator:
             area = cw * ch
 
             # HP bar should be wide and thin (aspect > 5) and reasonably sized
-            if aspect > 5 and 80 < cw < 300 and 5 < ch < 20 and area > 500:
+            if aspect > 4 and 60 < cw < 400 and 4 < ch < 25 and area > 300:
                 score = area * aspect  # Prefer wider, thinner bars
                 if score > best_score:
                     best_score = score
@@ -159,16 +172,16 @@ class ScreenCalibrator:
 
     def _find_mana_bar(self, frame: np.ndarray, hp_region: Optional[dict]) -> Optional[dict]:
         """
-        Find mana bar (blue bar, usually directly below HP bar).
+        Find mana bar (blue/purple bar, usually directly below HP bar).
         """
         h, w = frame.shape[:2]
 
         # If we found HP bar, look right below it
         if hp_region:
             search_y_start = hp_region["y"] + hp_region["h"]
-            search_y_end = min(search_y_start + 30, h)  # Within 30px below HP
-            search_x_start = max(0, hp_region["x"] - 10)
-            search_x_end = min(hp_region["x"] + hp_region["w"] + 10, w)
+            search_y_end = min(search_y_start + 40, h)  # Within 40px below HP
+            search_x_start = max(0, hp_region["x"] - 20)
+            search_x_end = min(hp_region["x"] + hp_region["w"] + 20, w)
         else:
             search_y_start = 0
             search_y_end = int(h * 0.3)
@@ -179,11 +192,11 @@ class ScreenCalibrator:
         if search_region.size == 0:
             return None
 
-        # Create blue mask
+        # Mana bar is blue/purple — B channel dominant
         r = search_region[:, :, 2].astype(np.int16)
         g = search_region[:, :, 1].astype(np.int16)
         b = search_region[:, :, 0].astype(np.int16)
-        blue_mask = ((b > 120) & (b > r + 40) & (b > g + 40)).astype(np.uint8) * 255
+        blue_mask = ((b > 100) & (b > r + 30) & (b > g + 30)).astype(np.uint8) * 255
 
         contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -194,7 +207,7 @@ class ScreenCalibrator:
             aspect = cw / max(ch, 1)
             area = cw * ch
 
-            if aspect > 5 and 80 < cw < 300 and 5 < ch < 20 and area > 500:
+            if aspect > 4 and 60 < cw < 400 and 4 < ch < 25 and area > 300:
                 score = area * aspect
                 if score > best_score:
                     best_score = score

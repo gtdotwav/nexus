@@ -168,8 +168,18 @@ class GameReaderV2:
         Read HP from pixel colors. <0.5ms.
 
         Method: Scan the middle row of the HP bar region.
-        Count consecutive colored (non-dark) pixels from left.
-        This is the HP fill percentage.
+        Count colored (non-dark) pixels = filled portion of bar.
+
+        Tibia HP bar color by health level:
+            100% = bright GREEN
+            ~75% = YELLOW-GREEN
+            ~50% = YELLOW
+            ~25% = ORANGE
+            ~10% = RED
+            0%   = DARK (empty/black)
+
+        We detect ANY bright colored pixel as "filled" — the unfilled
+        portion is dark background (~30-50 brightness).
         """
         region = self.regions.get("health_bar") or self.regions.get("hp_bar")
         if not region:
@@ -181,21 +191,36 @@ class GameReaderV2:
         if y + h > frame.shape[0] or x + w > frame.shape[1]:
             return
 
-        # Extract middle row of the bar
+        # Sample 3 rows around the middle for robustness (avoid single-pixel noise)
         mid_y = y + h // 2
-        bar_row = frame[mid_y, x:x + w]
+        rows_to_check = [mid_y]
+        if mid_y - 1 >= y:
+            rows_to_check.append(mid_y - 1)
+        if mid_y + 1 < y + h:
+            rows_to_check.append(mid_y + 1)
 
-        # HP bar in Tibia: red pixels (R > 150, G < 80, B < 80) = filled
-        # Fast check: sum of red channel minus others
-        r = bar_row[:, 2].astype(np.int16)
-        g = bar_row[:, 1].astype(np.int16)
-        b = bar_row[:, 0].astype(np.int16)
-        is_filled = (r > 120) & (r > g + 40) & (r > b + 40)
+        best_filled = 0
+        for row_y in rows_to_check:
+            bar_row = frame[row_y, x:x + w]
+            r = bar_row[:, 2].astype(np.int16)
+            g = bar_row[:, 1].astype(np.int16)
+            b = bar_row[:, 0].astype(np.int16)
 
-        filled_pixels = np.sum(is_filled)
+            # Detect ALL HP bar colors:
+            # Green (full HP): G is dominant and bright
+            is_green = (g > 100) & (g > r + 20) & (g > b + 20)
+            # Red (low HP): R is dominant and bright
+            is_red = (r > 100) & (r > g + 20) & (r > b + 20)
+            # Yellow/Orange (medium HP): R and G both high, B low
+            is_yellow = (r > 80) & (g > 60) & (b < 80) & ((r + g) > 200)
+
+            is_filled = is_green | is_red | is_yellow
+            filled_count = int(np.sum(is_filled))
+            if filled_count > best_filled:
+                best_filled = filled_count
+
         total_pixels = w
-
-        hp_percent = (filled_pixels / total_pixels * 100) if total_pixels > 0 else 0
+        hp_percent = (best_filled / total_pixels * 100) if total_pixels > 0 else 0
         hp_percent = max(0.0, min(100.0, hp_percent))
 
         # Only update state if changed (avoid unnecessary event triggers)
@@ -211,7 +236,8 @@ class GameReaderV2:
         """
         Read Mana from pixel colors. <0.5ms.
 
-        Same approach as HP but looking for blue pixels.
+        Mana bar in Tibia is blue/purple. Unfilled portion is dark.
+        We detect blue-dominant bright pixels as "filled".
         """
         region = self.regions.get("mana_bar")
         if not region:
@@ -223,19 +249,29 @@ class GameReaderV2:
         if y + h > frame.shape[0] or x + w > frame.shape[1]:
             return
 
+        # Sample 3 rows around the middle for robustness
         mid_y = y + h // 2
-        bar_row = frame[mid_y, x:x + w]
+        rows_to_check = [mid_y]
+        if mid_y - 1 >= y:
+            rows_to_check.append(mid_y - 1)
+        if mid_y + 1 < y + h:
+            rows_to_check.append(mid_y + 1)
 
-        # Mana bar: blue pixels (B > 150, R < 80, G < 80)
-        r = bar_row[:, 2].astype(np.int16)
-        g = bar_row[:, 1].astype(np.int16)
-        b = bar_row[:, 0].astype(np.int16)
-        is_filled = (b > 120) & (b > r + 40) & (b > g + 40)
+        best_filled = 0
+        for row_y in rows_to_check:
+            bar_row = frame[row_y, x:x + w]
+            r = bar_row[:, 2].astype(np.int16)
+            g = bar_row[:, 1].astype(np.int16)
+            b = bar_row[:, 0].astype(np.int16)
 
-        filled_pixels = np.sum(is_filled)
+            # Blue/purple mana bar: B channel dominant
+            is_filled = (b > 80) & (b > r + 20) & (b > g + 20)
+            filled_count = int(np.sum(is_filled))
+            if filled_count > best_filled:
+                best_filled = filled_count
+
         total_pixels = w
-
-        mana_percent = (filled_pixels / total_pixels * 100) if total_pixels > 0 else 0
+        mana_percent = (best_filled / total_pixels * 100) if total_pixels > 0 else 0
         mana_percent = max(0.0, min(100.0, mana_percent))
 
         if abs(mana_percent - self._prev_mana) > 0.5:
