@@ -79,6 +79,10 @@ class GameState:
         self.last_strategic_update: float = 0.0
         self.last_action: float = 0.0
 
+        # Mode commitment — prevents rapid mode cycling
+        self._mode_set_at: float = 0.0
+        self._mode_commit_seconds: float = 10.0  # Minimum time to stay in a mode
+
     @property
     def hp_percent(self) -> float:
         if self.hp_max == 0:
@@ -177,11 +181,40 @@ class GameState:
         with self._lock:
             self.cooldowns[spell_name] = time.time() + (duration_ms / 1000)
 
-    def set_mode(self, mode: AgentMode):
+    def set_mode(self, mode: AgentMode, force: bool = False):
+        """Set agent mode with commitment protection.
+
+        Modes persist for at least _mode_commit_seconds to prevent
+        rapid cycling (HUNTING→EXPLORING→DEPOSITING every 3 seconds).
+
+        Emergency modes (FLEEING, HEALING_CRITICAL) always override.
+        Use force=True for recovery/emergency overrides.
+        """
         with self._lock:
+            now = time.time()
             old_mode = self.mode
+
+            # Same mode = no-op
+            if mode == old_mode:
+                return
+
+            # Emergency modes always override
+            emergency_modes = {AgentMode.FLEEING}
+            if hasattr(AgentMode, 'HEALING_CRITICAL'):
+                emergency_modes.add(AgentMode.HEALING_CRITICAL)
+
+            if not force and mode not in emergency_modes:
+                elapsed = now - self._mode_set_at
+                if elapsed < self._mode_commit_seconds:
+                    log.debug("state.mode_change_blocked",
+                              requested=mode.name, current=old_mode.name,
+                              remaining=round(self._mode_commit_seconds - elapsed, 1))
+                    return
+
             self.mode = mode
+            self._mode_set_at = now
             self._notify("mode_changed", {"old": old_mode, "new": mode})
+            log.info("state.mode_changed", old=old_mode.name, new=mode.name)
 
     def get_snapshot(self) -> dict:
         """Full state snapshot for the strategic brain."""

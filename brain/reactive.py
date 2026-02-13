@@ -230,8 +230,9 @@ class ReactiveBrain:
         self.anti_pk = reactive_config["anti_pk"]
 
         # ─── Combo/Chain Attack System ─────────────────────
-        # Default offensive spell rotation (can be overridden by strategic brain)
-        self._spell_rotation: list[str] = ["exori gran", "exori", "exori min"]
+        # Default offensive spell rotation — uses basic spells that work at any level.
+        # Strategic brain and skill engine can override this for higher levels.
+        self._spell_rotation: list[str] = ["exori min"]
         self._rotation_index: int = 0
         self._combo_active: bool = False
         self._combo_chain: deque[str] = deque(maxlen=5)  # Last 5 spells for chain tracking
@@ -263,24 +264,25 @@ class ReactiveBrain:
         # This prevents the bot from going haywire on startup.
         self._safe_mode = True
         self._start_time = time.time()
-        self._safe_mode_duration = reactive_config.get("safe_mode_seconds", 5)
+        self._safe_mode_duration = reactive_config.get("safe_mode_seconds", 10)
 
         # ─── Global Rate Limiter ─────────────────────────
         self._max_actions_per_second = reactive_config.get("max_actions_per_second", 3)
         self._action_timestamps: deque[float] = deque(maxlen=20)
 
         # Hotkey mappings — loaded from config, with sensible defaults
+        # Default layout matches Level 8 Knight setup
         default_hotkeys = {
-            "exura": "f1",
-            "exura gran": "f2",
-            "exura vita": "f3",
-            "exori": "f4",
-            "exori gran": "f5",
-            "exori min": "f6",
-            "great_health_potion": "f7",
-            "great_mana_potion": "f8",
-            "exeta res": "f9",
-            "utani hur": "f10",
+            "exura ico": "f1",        # Knight heal (lvl 8)
+            "exori min": "f2",        # Knight basic attack (lvl 8)
+            "exura": "f3",            # Light heal (all vocations)
+            "exori": "f4",            # Strike (lvl 12+)
+            "exori gran": "f5",       # Fierce Berserk (lvl 25+)
+            "exeta res": "f6",        # Challenge (lvl 20+)
+            "health_potion": "f7",    # Health potion
+            "mana_potion": "f8",      # Mana potion
+            "utani hur": "f9",        # Haste (lvl 14+)
+            "utevo lux": "f10",       # Light
         }
         config_hotkeys = reactive_config.get("hotkeys", {})
         self.hotkeys = {**default_hotkeys, **config_hotkeys}
