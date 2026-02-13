@@ -413,6 +413,9 @@ class NexusTUI(App):
         Binding("f2", "switch_screen('monitor')", "Monitor", show=True),
         Binding("f3", "switch_screen('skills')", "Skills", show=True),
         Binding("q", "quit", "Quit", show=True),
+        Binding("escape", "quit", "Quit", show=False),
+        Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
+        Binding("ctrl+q", "quit", "Quit", show=False),
     ]
 
     SCREENS = {
@@ -573,7 +576,19 @@ class NexusTUI(App):
             pass  # Polling must never crash
 
     async def action_quit(self) -> None:
-        """Graceful shutdown: stop agent, then exit."""
+        """Graceful shutdown: stop agent, then exit.
+
+        Immediately disables input to prevent any further key presses,
+        then stops the agent and exits.
+        """
+        # FIRST: immediately disable all input to prevent runaway actions
+        if self.agent and hasattr(self.agent, 'reactive_brain'):
+            try:
+                self.agent.reactive_brain.input._pynput_available = False
+                self.agent.running = False
+            except Exception:
+                pass
+
         if self.agent:
             try:
                 await self.agent.stop()

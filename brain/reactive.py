@@ -79,15 +79,24 @@ class HumanizedInput:
                         reason="pynput not installed, input disabled")
 
     async def press_key(self, key: str, hold_range: tuple = None):
-        """Press a keyboard key with human-like timing."""
+        """Press a keyboard key with human-like timing.
+
+        SAFETY: Only accepts keys in the key_map (f1-f12, arrows, etc).
+        Raw strings are REJECTED to prevent typing spell names as chat text.
+        """
         if not self._pynput_available or not self._keyboard:
+            return
+
+        actual_key = self._key_map.get(key.lower())
+        if actual_key is None:
+            # CRITICAL SAFETY: reject unknown keys — never fall through to raw string
+            log.warning("input.unknown_key_rejected", key=key,
+                        hint="Key not in key_map. Add it or use a valid F1-F12 key.")
             return
 
         if self.enabled:
             delay_min, delay_max = self.config["inter_action_delay"]
             await asyncio.sleep(random.uniform(delay_min, delay_max))
-
-        actual_key = self._key_map.get(key.lower(), key)
 
         # Humanized hold time
         if hold_range is None:
@@ -219,6 +228,17 @@ class ReactiveBrain:
         self._emergency_heals = 0
         self._last_modifier_update = 0.0
 
+        # ─── Safe Mode ────────────────────────────────────
+        # Observe for N seconds before executing ANY action.
+        # This prevents the bot from going haywire on startup.
+        self._safe_mode = True
+        self._start_time = time.time()
+        self._safe_mode_duration = reactive_config.get("safe_mode_seconds", 5)
+
+        # ─── Global Rate Limiter ─────────────────────────
+        self._max_actions_per_second = reactive_config.get("max_actions_per_second", 3)
+        self._action_timestamps: deque[float] = deque(maxlen=20)
+
         # Hotkey mappings — loaded from config, with sensible defaults
         default_hotkeys = {
             "exura": "f1",
@@ -235,6 +255,17 @@ class ReactiveBrain:
         config_hotkeys = reactive_config.get("hotkeys", {})
         self.hotkeys = {**default_hotkeys, **config_hotkeys}
 
+        # Validate all hotkeys at init — warn about bad mappings
+        valid_keys = set(["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
+                          "f9", "f10", "f11", "f12", "space", "enter",
+                          "escape", "ctrl", "shift", "alt",
+                          "up", "down", "left", "right"])
+        for spell, hk in self.hotkeys.items():
+            if hk.lower() not in valid_keys:
+                log.warning("reactive.invalid_hotkey_config",
+                            spell=spell, hotkey=hk,
+                            hint="Hotkey must be f1-f12 or a named key")
+
     async def tick(self):
         """
         Single tick of the reactive brain.
@@ -242,6 +273,24 @@ class ReactiveBrain:
         """
         now = time.time()
         self._ticks += 1
+
+        # ─── Safe Mode: observe-only for first N seconds ───
+        if self._safe_mode:
+            if now - self._start_time < self._safe_mode_duration:
+                return  # Do nothing — just observe
+            else:
+                self._safe_mode = False
+                log.info("reactive.safe_mode_ended",
+                         duration=self._safe_mode_duration,
+                         hp=round(self.state.hp_percent, 1),
+                         mana=round(self.state.mana_percent, 1))
+
+        # ─── Global Rate Limiter ───
+        # Remove timestamps older than 1 second
+        while self._action_timestamps and self._action_timestamps[0] < now - 1.0:
+            self._action_timestamps.popleft()
+        if len(self._action_timestamps) >= self._max_actions_per_second:
+            return  # Rate limited — skip this tick
 
         # Global cooldown check (prevent action spam)
         if now < self._global_cooldown:
@@ -481,25 +530,48 @@ class ReactiveBrain:
 
     # ─── Spell & Potion Execution ─────────────────────────
 
-    async def _cast_spell(self, spell_name: str):
-        """Cast a spell using its mapped hotkey."""
-        hotkey = self.hotkeys.get(spell_name)
-        if hotkey:
-            await self.input.press_key(hotkey)
-            # Set cooldown
-            self.state.set_cooldown(spell_name, 1000)  # Default 1s cooldown
-            self._global_cooldown = time.time() + 0.15  # 150ms global CD
-            log.debug("reactive.cast", spell=spell_name, hotkey=hotkey)
-        else:
-            log.warning("reactive.no_hotkey", spell=spell_name)
+    def _record_action(self):
+        """Record an action timestamp for rate limiting."""
+        self._action_timestamps.append(time.time())
 
-    async def _use_potion(self, potion_type: str):
+    async def _cast_spell(self, spell_name: str) -> bool:
+        """Cast a spell using its mapped hotkey.
+
+        Returns True if spell was executed, False if skipped.
+        ALWAYS sets cooldown to prevent infinite retry on failure.
+        """
+        hotkey = self.hotkeys.get(spell_name)
+        if not hotkey:
+            log.warning("reactive.no_hotkey", spell=spell_name)
+            # Set cooldown even on failure — prevents infinite retry loop
+            self.state.set_cooldown(spell_name, 5000)  # 5s penalty cooldown
+            self._global_cooldown = time.time() + 0.5
+            return False
+
+        # Validate hotkey is a known key (f1-f12, etc.) before pressing
+        if hotkey.lower() not in self.input._key_map:
+            log.warning("reactive.invalid_hotkey", spell=spell_name, hotkey=hotkey)
+            self.state.set_cooldown(spell_name, 5000)
+            return False
+
+        await self.input.press_key(hotkey)
+        self._record_action()
+        self.state.set_cooldown(spell_name, 1000)  # Default 1s cooldown
+        self._global_cooldown = time.time() + 0.15  # 150ms global CD
+        log.debug("reactive.cast", spell=spell_name, hotkey=hotkey)
+        return True
+
+    async def _use_potion(self, potion_type: str) -> bool:
         """Use a potion via its mapped hotkey."""
         hotkey = self.hotkeys.get(potion_type)
-        if hotkey:
-            await self.input.press_key(hotkey)
-            self._global_cooldown = time.time() + 0.15
-            log.debug("reactive.potion", type=potion_type, hotkey=hotkey)
+        if not hotkey or hotkey.lower() not in self.input._key_map:
+            log.warning("reactive.no_potion_hotkey", type=potion_type)
+            return False
+        await self.input.press_key(hotkey)
+        self._record_action()
+        self._global_cooldown = time.time() + 0.15
+        log.debug("reactive.potion", type=potion_type, hotkey=hotkey)
+        return True
 
     # ─── Consciousness Integration ────────────────────────
 
@@ -574,11 +646,34 @@ class ReactiveBrain:
         """
         Override the spell rotation. Called by strategic brain when
         a specific combo is needed for current situation.
+
+        SAFETY: Only accepts spells that have valid hotkey mappings.
+        Rejects unknown spells to prevent typing text into game chat.
         """
-        if rotation:
-            self._spell_rotation = rotation
+        if not rotation:
+            return
+
+        valid_spells = []
+        rejected = []
+        for spell in rotation:
+            hotkey = self.hotkeys.get(spell)
+            if hotkey and hotkey.lower() in self.input._key_map:
+                valid_spells.append(spell)
+            else:
+                rejected.append(spell)
+
+        if rejected:
+            log.warning("reactive.rotation_rejected_spells",
+                        rejected=rejected,
+                        hint="These spells have no valid hotkey mapping")
+
+        if valid_spells:
+            self._spell_rotation = valid_spells
             self._rotation_index = 0
-            log.info("reactive.rotation_set", rotation=rotation)
+            log.info("reactive.rotation_set", rotation=valid_spells)
+        else:
+            log.warning("reactive.rotation_empty_after_validation",
+                        original=rotation)
 
     def set_reposition_target(self, direction: str):
         """
