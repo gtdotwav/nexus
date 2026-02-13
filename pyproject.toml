@@ -72,6 +72,9 @@ Homepage = "https://github.com/gtdotwav/nexus"
 Repository = "https://github.com/gtdotwav/nexus"
 Changelog = "https://github.com/gtdotwav/nexus/blob/main/CHANGELOG.md"
 
+[tool.setuptools]
+py-modules = ["nexus_cli", "launcher", "main"]
+
 [tool.setuptools.packages.find]
 include = [
     "core*",
@@ -81,6 +84,7 @@ include = [
     "skills*",
     "dashboard*",
     "games*",
+    "scripts*",
 ]
 
 [tool.setuptools.package-data]
