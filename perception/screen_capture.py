@@ -28,9 +28,10 @@ class ScreenCapture:
 
     def __init__(self, config: dict):
         self.config = config
-        self.fps = config["capture"]["fps"]
-        self.monitor_index = config["capture"]["monitor_index"]
-        self.backend = config["capture"]["backend"]
+        capture = config.get("capture", {})
+        self.fps = capture.get("fps", 30)
+        self.monitor_index = capture.get("monitor_index", 0)
+        self.backend = capture.get("backend", "mss")
 
         self._camera = None
         self._game_window_region = None  # (left, top, right, bottom)

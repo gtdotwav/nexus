@@ -270,8 +270,9 @@ class SetupWizard:
             },
             "perception": base.get("perception", {
                 "capture": {
-                    "method": "dxcam" if sys.platform == "win32" else "screenshot",
+                    "backend": "dxcam" if sys.platform == "win32" else "mss",
                     "fps": 30,
+                    "monitor_index": 0,
                     "game_window_title": "Tibia",
                 },
             }),
