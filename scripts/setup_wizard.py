@@ -41,7 +41,7 @@ class SetupWizard:
         self.console = Console() if HAS_RICH else None
         self.config: dict = {}
 
-    def print(self, text: str, style: str = ""):
+    def print(self, text: str = "", style: str = ""):
         if self.console:
             self.console.print(text, style=style)
         else:
