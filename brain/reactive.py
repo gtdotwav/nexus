@@ -113,9 +113,32 @@ class HumanizedInput:
 
         self._last_action_time = time.time()
 
+    def set_game_window_bounds(self, left: int, top: int, right: int, bottom: int):
+        """Set the game window bounds. Clicks outside this area are BLOCKED."""
+        self._game_bounds = (left, top, right, bottom)
+        log.info("input.game_bounds_set", left=left, top=top, right=right, bottom=bottom)
+
     async def click(self, x: int, y: int, button: str = "left"):
-        """Click at coordinates with human-like mouse movement."""
+        """Click at coordinates with human-like mouse movement.
+
+        SAFETY: Clicks are restricted to within the game window bounds.
+        Any click outside the game window is silently rejected to prevent
+        the bot from clicking on OS elements (Apple menu, dock, etc).
+        """
         if not self._pynput_available or not self._mouse:
+            return
+
+        # SAFETY: Block clicks outside game window
+        if hasattr(self, '_game_bounds') and self._game_bounds:
+            gl, gt, gr, gb = self._game_bounds
+            if x < gl or x > gr or y < gt or y > gb:
+                log.warning("input.click_outside_bounds",
+                            x=x, y=y, bounds=self._game_bounds)
+                return
+        else:
+            # No game bounds set — block ALL clicks until calibrated
+            log.warning("input.click_blocked_no_bounds",
+                        x=x, y=y, hint="Set game window bounds first")
             return
 
         if self.enabled:
@@ -126,6 +149,12 @@ class HumanizedInput:
         noise_std = self.config["coordinate_noise_std"]
         target_x = int(x + random.gauss(0, noise_std))
         target_y = int(y + random.gauss(0, noise_std))
+
+        # Clamp to game window bounds after noise
+        if hasattr(self, '_game_bounds') and self._game_bounds:
+            gl, gt, gr, gb = self._game_bounds
+            target_x = max(gl, min(gr, target_x))
+            target_y = max(gt, min(gb, target_y))
 
         # Move mouse (TODO: implement Bézier curve movement)
         self._mouse.position = (target_x, target_y)
@@ -142,16 +171,17 @@ class HumanizedInput:
         self._last_action_time = time.time()
 
     async def type_text(self, text: str):
-        """Type text with human-like keystroke timing."""
-        if not self._pynput_available:
-            return
+        """Type text with human-like keystroke timing.
 
-        for char in text:
-            delay = random.uniform(0.05, 0.15)  # Typing speed variation
-            await asyncio.sleep(delay)
-            self._keyboard.press(char)
-            await asyncio.sleep(random.uniform(0.03, 0.08))
-            self._keyboard.release(char)
+        DISABLED FOR SAFETY: This method is blocked to prevent the bot
+        from typing text into game chat. All spell casting must use
+        hotkeys via press_key(). If you need to type text, the user
+        must do it manually.
+        """
+        log.warning("input.type_text_blocked",
+                    text=text[:30],
+                    hint="type_text is disabled for safety — use hotkeys instead")
+        return  # BLOCKED — never type raw text
 
 
 class ReactiveBrain:

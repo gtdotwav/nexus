@@ -248,7 +248,13 @@ class NexusAgent:
             for name, loop_fn in ALL_LOOPS
         ]
 
-        # Set initial mode based on whether we have skills
+        # Wire game window bounds to input system (mouse click safety)
+        if self.screen_capture._game_window_region:
+            left, top, right, bottom = self.screen_capture._game_window_region
+            self.reactive_brain.input.set_game_window_bounds(left, top, right, bottom)
+            log.info("nexus.input_bounds_synced", region=self.screen_capture._game_window_region)
+
+        # Set initial mode — start PAUSED, safe mode handles transition
         initial_mode = AgentMode.HUNTING if active_skill else AgentMode.EXPLORING
         self.state.set_mode(initial_mode)
         log.info("nexus.alive", mode=initial_mode.name,
