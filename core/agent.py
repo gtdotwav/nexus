@@ -342,15 +342,12 @@ class NexusAgent:
 
         regions = self.config.get("perception", {}).get("regions", {})
 
-        # Check if regions are placeholders (all at 0,0)
-        all_zero = all(
-            r.get("x", 0) == 0 and r.get("y", 0) == 0
-            for r in regions.values()
-            if isinstance(r, dict)
-        )
-
-        if not all_zero:
-            log.info("nexus.regions_configured", source="manual_config")
+        # Check if regions have been properly calibrated (have meaningful dimensions)
+        # Regions from the setup wizard are defaults for 1920x1080 and almost never
+        # match the user's actual screen. Always auto-calibrate unless the user has
+        # explicitly set a "calibrated: true" flag.
+        if self.config.get("perception", {}).get("calibrated") is True:
+            log.info("nexus.regions_configured", source="manual_calibration")
             return
 
         log.info("nexus.auto_calibrating_regions",
